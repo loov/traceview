@@ -11,6 +11,7 @@ import (
 	"math"
 	"os"
 	"sort"
+	"time"
 
 	"gioui.org/app"
 	"gioui.org/font/gofont"
@@ -21,6 +22,7 @@ import (
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
 	"gioui.org/unit"
+	"gioui.org/widget"
 	"gioui.org/widget/material"
 
 	"loov.dev/jaeger-ui/jaeger"
@@ -68,12 +70,18 @@ var defaultMargin = unit.Dp(10)
 type UI struct {
 	Theme    *material.Theme
 	Timeline *Timeline
+
+	SkipSpans widget.Float
+	ZoomLevel widget.Float
 }
 
 func NewUI(traces []jaeger.Trace) *UI {
 	ui := &UI{}
 	ui.Theme = material.NewTheme(gofont.Collection())
 	ui.Timeline = NewTimeline(traces)
+
+	ui.SkipSpans.Value = 0.0
+	ui.ZoomLevel.Value = 1.0
 	return ui
 }
 
@@ -103,6 +111,54 @@ func (ui *UI) Run(w *app.Window) error {
 }
 
 func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{
+		Axis: layout.Vertical,
+	}.Layout(gtx,
+		layout.Rigid(
+			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration.Std()).Layout),
+		layout.Rigid(
+			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
+		layout.Flexed(1, ui.LayoutTimeline),
+	)
+}
+
+type DurationSliderStyle struct {
+	Theme *material.Theme
+	Value *widget.Float
+	Text  string
+	Min   time.Duration
+	Max   time.Duration
+}
+
+func DurationSlider(theme *material.Theme, value *widget.Float, text string, min, max time.Duration) DurationSliderStyle {
+	return DurationSliderStyle{
+		Theme: theme,
+		Value: value,
+		Text:  text,
+		Min:   min,
+		Max:   max,
+	}
+}
+
+func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{
+		Alignment: layout.Middle,
+	}.Layout(gtx,
+		layout.Rigid(
+			material.Body1(slider.Theme,
+				slider.Text+fmt.Sprintf(" %.2f sec", slider.Value.Value)).Layout,
+		),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
+		layout.Flexed(1,
+			material.Slider(slider.Theme,
+				slider.Value,
+				float32(slider.Min.Seconds()),
+				float32(slider.Max.Seconds())).Layout,
+		),
+	)
+}
+
+func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 	var topY int
 	var sidebarWidth = gtx.Constraints.Max.X / 4
 	var timelineWidth = gtx.Constraints.Max.X - sidebarWidth
@@ -111,13 +167,17 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 	var rowAdvance = rowHeight + gtx.Px(unit.Px(2))
 
 	timeline := ui.Timeline
-	durationToPx := float32(timelineWidth) / float32(timeline.Duration)
+	durationToPx := float32(timelineWidth) / (ui.ZoomLevel.Value * float32(time.Second/time.Microsecond))
 
 	for _, node := range timeline.RenderOrder {
+		if node.Duration.Std().Seconds() < float64(ui.SkipSpans.Value) {
+			continue
+		}
+
 		x0 := int(durationToPx * float32(node.StartTime-timeline.StartTime))
 		x1 := x0 + int(math.Ceil(float64(durationToPx*float32(node.Duration))))
 
-		paint.FillShape(gtx.Ops, color.NRGBA{A: 0xFF}, clip.Rect{
+		paint.FillShape(gtx.Ops, color.NRGBA{R: 0xFF, A: 0xFF}, clip.Rect{
 			Min: image.Pt(sidebarWidth+x0, topY),
 			Max: image.Pt(sidebarWidth+x1, topY+rowHeight),
 		}.Op())
