@@ -12,6 +12,7 @@ import (
 	"os"
 	"sort"
 	"time"
+	"unsafe"
 
 	"gioui.org/app"
 	"gioui.org/font/gofont"
@@ -111,6 +112,24 @@ func (ui *UI) Run(w *app.Window) error {
 }
 
 func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
+	view := &TimelineView{
+		Theme:    ui.Theme,
+		Timeline: ui.Timeline,
+
+		RowHeight: ui.Theme.FingerSize,
+		RowGap:    ui.Theme.FingerSize.Scale(0.2),
+
+		ZoomStart: ui.Timeline.StartTime.Std(),
+		ZoomEnd:   ui.Timeline.StartTime.Std() + ui.Timeline.Duration.Std(),
+	}
+
+	for _, node := range ui.Timeline.RenderOrder {
+		if node.Duration.Std().Seconds() < float64(ui.SkipSpans.Value) {
+			continue
+		}
+		view.Visible = append(view.Visible, node)
+	}
+
 	return layout.Flex{
 		Axis: layout.Vertical,
 	}.Layout(gtx,
@@ -118,7 +137,18 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration.Std()).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
-		layout.Flexed(1, ui.LayoutTimeline),
+
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return layout.UniformInset(unit.Dp(8)).Layout(gtx, view.Minimap)
+		}),
+
+		layout.Flexed(1,
+			func(gtx layout.Context) layout.Dimensions {
+				return layout.Flex{}.Layout(gtx,
+					layout.Flexed(1, view.Spans),
+					layout.Flexed(2, view.Spans),
+				)
+			}),
 	)
 }
 
@@ -158,13 +188,91 @@ func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
 	)
 }
 
-func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
-	var topY int
-	var sidebarWidth = gtx.Constraints.Max.X / 4
-	var timelineWidth = gtx.Constraints.Max.X - sidebarWidth
+type TimelineView struct {
+	Theme *material.Theme
 
-	var rowHeight = gtx.Px(unit.Sp(12))
-	var rowAdvance = rowHeight + gtx.Px(unit.Px(2))
+	*Timeline
+	Visible []*SpanNode
+
+	RowHeight unit.Value
+	RowGap    unit.Value
+
+	ZoomStart time.Duration
+	ZoomEnd   time.Duration
+}
+
+func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
+	height := gtx.Px(unit.Dp(1)) * len(view.Visible)
+	if smallestSize := gtx.Px(view.Theme.FingerSize); height < smallestSize {
+		height = smallestSize
+	}
+	size := image.Point{
+		X: gtx.Constraints.Max.X,
+		Y: height,
+	}
+
+	rowHeight := int(float32(size.Y) / float32(len(view.Visible)))
+	if rowHeight < 1 {
+		rowHeight = 1
+	}
+
+	topY := 0
+
+	durationToPx := float32(size.X) / float32(view.Duration)
+	for _, span := range view.Visible {
+		x0 := int(durationToPx * float32(span.StartTime-view.StartTime))
+		x1 := x0 + int(math.Ceil(float64(durationToPx*float32(span.Duration))))
+
+		paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
+			Min: image.Point{X: x0, Y: topY},
+			Max: image.Point{X: x1, Y: topY + rowHeight},
+		}.Op())
+
+		topY += rowHeight
+	}
+
+	return layout.Dimensions{
+		Size: size,
+	}
+}
+
+func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
+	size := gtx.Constraints.Max
+
+	rowHeight := gtx.Px(view.RowHeight)
+	rowAdvance := rowHeight + gtx.Px(view.RowGap)
+
+	topY := 0
+
+	durationToPx := float32(size.X) / float32((view.ZoomEnd - view.ZoomStart).Microseconds())
+	for _, node := range view.Visible {
+		x0 := int(durationToPx * float32(node.StartTime-jaeger.Duration(view.ZoomStart.Microseconds())))
+		x1 := int(math.Ceil(float64(durationToPx * float32(node.Duration))))
+
+		paint.FillShape(gtx.Ops, view.SpanColor(node), clip.Rect{
+			Min: image.Pt(x0, topY),
+			Max: image.Pt(x1, topY+rowHeight),
+		}.Op())
+
+		topY += rowAdvance
+	}
+
+	return layout.Dimensions{
+		Size: size,
+	}
+}
+
+func (view *TimelineView) SpanColor(span *SpanNode) color.NRGBA {
+	p := uintptr(unsafe.Pointer(span))
+	return color.NRGBA{R: byte(p), G: byte(p >> 8), B: byte(p >> 16), A: 0xFF}
+}
+
+func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
+	topY := 0
+	timelineWidth := gtx.Constraints.Max.X
+
+	rowHeight := gtx.Px(unit.Sp(12))
+	rowAdvance := rowHeight + gtx.Px(unit.Px(2))
 
 	timeline := ui.Timeline
 	durationToPx := float32(timelineWidth) / (ui.ZoomLevel.Value * float32(time.Second/time.Microsecond))
@@ -178,8 +286,8 @@ func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 		x1 := x0 + int(math.Ceil(float64(durationToPx*float32(node.Duration))))
 
 		paint.FillShape(gtx.Ops, color.NRGBA{R: 0xFF, A: 0xFF}, clip.Rect{
-			Min: image.Pt(sidebarWidth+x0, topY),
-			Max: image.Pt(sidebarWidth+x1, topY+rowHeight),
+			Min: image.Pt(x0, topY),
+			Max: image.Pt(x1, topY+rowHeight),
 		}.Op())
 
 		topY += rowAdvance
