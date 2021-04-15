@@ -1,4 +1,4 @@
-module loov.dev/jaeger-ui
+module loov.dev/traceview
 
 go 1.16
 
