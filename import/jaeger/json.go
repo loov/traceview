@@ -1,6 +1,10 @@
 package jaeger
 
-import "time"
+import (
+	"time"
+
+	"loov.dev/traceview/trace"
+)
 
 type File struct {
 	Data []Trace `json:"data"`
@@ -17,23 +21,8 @@ type TraceSpanID struct {
 
 type Duration int64 // in microseconds
 
-func (a Duration) Min(b Duration) Duration {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-func (a Duration) Max(b Duration) Duration {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-func (d Duration) Std() time.Duration {
-	return time.Duration(d) * time.Microsecond
-}
+func (d Duration) Std() time.Duration { return time.Duration(d) * time.Microsecond }
+func (d Duration) Time() trace.Time   { return trace.NewTime(d.Std()) }
 
 type Flags int32
 

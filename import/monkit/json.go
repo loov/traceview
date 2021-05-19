@@ -1,6 +1,10 @@
 package monkit
 
-import "time"
+import (
+	"time"
+
+	"loov.dev/traceview/trace"
+)
 
 type File []Span
 
@@ -27,7 +31,8 @@ type TraceID int64
 
 type UnixNano int64
 
-func (n UnixNano) Duration() time.Duration { return time.Duration(n) }
+func (n UnixNano) Std() time.Duration { return time.Duration(n) }
+func (n UnixNano) Time() trace.Time   { return trace.NewTime(n.Std()) }
 
 type Func struct {
 	Package string `json:"package"`

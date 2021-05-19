@@ -27,6 +27,9 @@ import (
 	"gioui.org/widget/material"
 
 	"loov.dev/traceview/import/jaeger"
+	_ "loov.dev/traceview/import/jaeger"
+	_ "loov.dev/traceview/import/monkit"
+	"loov.dev/traceview/trace"
 )
 
 func main() {
@@ -35,6 +38,7 @@ func main() {
 	if infile == "" {
 		return
 	}
+
 	if err := run(context.Background(), infile); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 	}
@@ -52,7 +56,12 @@ func run(ctx context.Context, infile string) error {
 		return fmt.Errorf("failed to parse file %q: %w", infile, err)
 	}
 
-	ui := NewUI(tracefile.Data)
+	timeline, err := jaeger.Convert(tracefile.Data...)
+	if err != nil {
+		return fmt.Errorf("failed to convert jaeger %q: %w", infile, err)
+	}
+
+	ui := NewUI(timeline)
 	go func() {
 		w := app.NewWindow(app.Title("Jaeger UI"))
 		if err := ui.Run(w); err != nil {
@@ -76,10 +85,10 @@ type UI struct {
 	ZoomLevel widget.Float
 }
 
-func NewUI(traces []jaeger.Trace) *UI {
+func NewUI(timeline trace.Timeline) *UI {
 	ui := &UI{}
 	ui.Theme = material.NewTheme(gofont.Collection())
-	ui.Timeline = NewTimeline(traces)
+	ui.Timeline = NewTimeline(timeline)
 
 	ui.SkipSpans.Value = 0.0
 	ui.ZoomLevel.Value = 1.0
@@ -119,12 +128,12 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		RowHeight: ui.Theme.FingerSize,
 		RowGap:    ui.Theme.FingerSize.Scale(0.2),
 
-		ZoomStart: ui.Timeline.StartTime.Std(),
-		ZoomEnd:   ui.Timeline.StartTime.Std() + ui.Timeline.Duration.Std(),
+		ZoomStart:  ui.Timeline.Start,
+		ZoomFinish: ui.Timeline.Finish,
 	}
 
 	for _, node := range ui.Timeline.RenderOrder {
-		if node.Duration.Std().Seconds() < float64(ui.SkipSpans.Value) {
+		if node.Duration().Std().Seconds() < float64(ui.SkipSpans.Value) {
 			continue
 		}
 		view.Visible = append(view.Visible, node)
@@ -134,7 +143,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		Axis: layout.Vertical,
 	}.Layout(gtx,
 		layout.Rigid(
-			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration.Std()).Layout),
+			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration().Std()).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
 
@@ -142,13 +151,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 			return layout.UniformInset(unit.Dp(8)).Layout(gtx, view.Minimap)
 		}),
 
-		layout.Flexed(1,
-			func(gtx layout.Context) layout.Dimensions {
-				return layout.Flex{}.Layout(gtx,
-					layout.Flexed(1, view.Spans),
-					layout.Flexed(2, view.Spans),
-				)
-			}),
+		layout.Flexed(1, view.Spans),
 	)
 }
 
@@ -192,13 +195,13 @@ type TimelineView struct {
 	Theme *material.Theme
 
 	*Timeline
-	Visible []*SpanNode
+	Visible []*trace.Span
 
 	RowHeight unit.Value
 	RowGap    unit.Value
 
-	ZoomStart time.Duration
-	ZoomEnd   time.Duration
+	ZoomStart  trace.Time
+	ZoomFinish trace.Time
 }
 
 func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
@@ -218,10 +221,10 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 
 	topY := 0
 
-	durationToPx := float32(size.X) / float32(view.Duration)
+	durationToPx := float64(size.X) / float64(view.Duration())
 	for _, span := range view.Visible {
-		x0 := int(durationToPx * float32(span.StartTime-view.StartTime))
-		x1 := x0 + int(math.Ceil(float64(durationToPx*float32(span.Duration))))
+		x0 := int(durationToPx * float64(span.Start-view.Start))
+		x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.Start))))
 
 		paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
 			Min: image.Point{X: x0, Y: topY},
@@ -244,12 +247,12 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 
 	topY := 0
 
-	durationToPx := float32(size.X) / float32((view.ZoomEnd - view.ZoomStart).Microseconds())
-	for _, node := range view.Visible {
-		x0 := int(durationToPx * float32(node.StartTime-jaeger.Duration(view.ZoomStart.Microseconds())))
-		x1 := int(math.Ceil(float64(durationToPx * float32(node.Duration))))
+	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
+	for _, span := range view.Visible {
+		x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
+		x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
 
-		paint.FillShape(gtx.Ops, view.SpanColor(node), clip.Rect{
+		paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
 			Min: image.Pt(x0, topY),
 			Max: image.Pt(x1, topY+rowHeight),
 		}.Op())
@@ -262,134 +265,42 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	}
 }
 
-func (view *TimelineView) SpanColor(span *SpanNode) color.NRGBA {
+func (view *TimelineView) SpanColor(span *trace.Span) color.NRGBA {
 	p := uintptr(unsafe.Pointer(span))
 	return color.NRGBA{R: byte(p), G: byte(p >> 8), B: byte(p >> 16), A: 0xFF}
 }
 
-func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
-	topY := 0
-	timelineWidth := gtx.Constraints.Max.X
-
-	rowHeight := gtx.Px(unit.Sp(12))
-	rowAdvance := rowHeight + gtx.Px(unit.Px(2))
-
-	timeline := ui.Timeline
-	durationToPx := float32(timelineWidth) / (ui.ZoomLevel.Value * float32(time.Second/time.Microsecond))
-
-	for _, node := range timeline.RenderOrder {
-		if node.Duration.Std().Seconds() < float64(ui.SkipSpans.Value) {
-			continue
-		}
-
-		x0 := int(durationToPx * float32(node.StartTime-timeline.StartTime))
-		x1 := x0 + int(math.Ceil(float64(durationToPx*float32(node.Duration))))
-
-		paint.FillShape(gtx.Ops, color.NRGBA{R: 0xFF, A: 0xFF}, clip.Rect{
-			Min: image.Pt(x0, topY),
-			Max: image.Pt(x1, topY+rowHeight),
-		}.Op())
-
-		topY += rowAdvance
-	}
-
-	return layout.Dimensions{
-		Size: gtx.Constraints.Max,
-	}
-}
-
 type Timeline struct {
-	Traces   []jaeger.Trace
-	NodeByID map[jaeger.TraceSpanID]*SpanNode
-
-	StartTime jaeger.Duration
-	Duration  jaeger.Duration
-
-	RenderOrder []*SpanNode
+	trace.Timeline
+	RenderOrder []*trace.Span
 }
 
-type SpanNode struct {
-	*jaeger.Span
+func NewTimeline(timeline trace.Timeline) *Timeline {
+	roots := []*trace.Span{}
 
-	Parents  []*SpanNode
-	Children []*SpanNode
-
-	FollowsFrom []*SpanNode
-	FollowedBy  []*SpanNode
-}
-
-func NewTimeline(traces []jaeger.Trace) *Timeline {
-	nodeByID := make(map[jaeger.TraceSpanID]*SpanNode)
-
-	var startTime jaeger.Duration = math.MaxInt64
-	var endTime jaeger.Duration = math.MinInt64
-
-	ensure := func(id jaeger.TraceSpanID, span *jaeger.Span) *SpanNode {
-		node, ok := nodeByID[id]
-		if !ok {
-			if span == nil {
-				span = &jaeger.Span{
-					TraceSpanID: id,
-				}
-			}
-			node = &SpanNode{
-				Span: span,
-			}
-			nodeByID[id] = node
-		} else {
-			if span != nil {
-				node.Span = span
-			}
-		}
-		return node
-	}
-
-	roots := []*SpanNode{}
-	for i := range traces {
-		trace := &traces[i]
-		for k := range trace.Spans {
-			span := &trace.Spans[k]
-			startTime = startTime.Min(span.StartTime)
-			endTime = endTime.Max(span.StartTime + span.Duration)
-
-			node := ensure(span.TraceSpanID, span)
-			for _, ref := range span.References {
-				switch ref.RefType {
-				case jaeger.ChildOf:
-					parent := ensure(ref.TraceSpanID, nil)
-					parent.Children = append(parent.Children, node)
-					node.Parents = append(node.Parents, parent)
-				case jaeger.FollowsFrom:
-					parent := ensure(ref.TraceSpanID, nil)
-					parent.FollowedBy = append(parent.FollowedBy, node)
-					node.FollowsFrom = append(node.FollowsFrom, parent)
-				}
-			}
-
-			if len(span.References) == 0 {
-				roots = append(roots, node)
+	for _, tr := range timeline.Traces {
+		for _, span := range tr.Spans {
+			if len(span.Parents) == 0 {
+				roots = append(roots, span)
 			}
 		}
 	}
 
 	sort.Slice(roots, func(i, k int) bool {
 		a, b := roots[i], roots[k]
-		if a.StartTime == b.StartTime {
-			return a.Duration > b.Duration
-		}
-		return a.StartTime < b.StartTime
+		return a.TimeRange.Less(b.TimeRange)
 	})
 
-	seen := make(map[jaeger.TraceSpanID]struct{})
-	renderOrder := []*SpanNode{}
-	var include func(node *SpanNode)
-	include = func(node *SpanNode) {
-		if _, ok := seen[node.TraceSpanID]; ok {
+	seen := make(map[*trace.Span]struct{})
+	renderOrder := []*trace.Span{}
+	var include func(span *trace.Span)
+	include = func(span *trace.Span) {
+		if _, ok := seen[span]; ok {
 			return
 		}
-		seen[node.TraceSpanID] = struct{}{}
-		renderOrder = append(renderOrder, node)
-		for _, child := range node.Children {
+		seen[span] = struct{}{}
+		renderOrder = append(renderOrder, span)
+		for _, child := range span.Children {
 			include(child)
 		}
 	}
@@ -398,12 +309,7 @@ func NewTimeline(traces []jaeger.Trace) *Timeline {
 	}
 
 	return &Timeline{
-		Traces:   traces,
-		NodeByID: nodeByID,
-
-		StartTime: startTime,
-		Duration:  endTime - startTime,
-
+		Timeline:    timeline,
 		RenderOrder: renderOrder,
 	}
 }
