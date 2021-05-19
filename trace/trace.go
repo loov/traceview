@@ -27,6 +27,7 @@ type Trace struct {
 	TraceID
 	TimeRange
 	Spans []*Span
+	Order []*Span
 }
 
 type Span struct {
@@ -83,5 +84,29 @@ func (timeline *Timeline) Sort() {
 			b := t.Spans[k]
 			return a.TimeRange.Less(b.TimeRange)
 		})
+
+		roots := []*Span{}
+		for _, span := range t.Spans {
+			if len(span.Parents) == 0 {
+				roots = append(roots, span)
+			}
+		}
+
+		t.Order = []*Span{}
+		seen := make(map[*Span]struct{})
+		var include func(*Span)
+		include = func(span *Span) {
+			if _, ok := seen[span]; ok {
+				return
+			}
+			t.Order = append(t.Order, span)
+			for _, child := range span.Children {
+				include(child)
+			}
+		}
+		for _, root := range roots {
+			include(root)
+		}
 	}
+
 }

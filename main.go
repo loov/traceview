@@ -123,15 +123,15 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		Theme:    ui.Theme,
 		Timeline: ui.Timeline,
 
-		RowHeight: ui.Theme.FingerSize,
-		RowGap:    ui.Theme.FingerSize.Scale(0.2),
+		RowHeight: ui.Theme.FingerSize.Scale(0.5),
+		RowGap:    unit.Px(1),
 
 		ZoomStart:  ui.Timeline.Start,
 		ZoomFinish: ui.Timeline.Finish,
 	}
 
 	for _, tr := range ui.Timeline.Traces {
-		for _, span := range tr.Spans {
+		for _, span := range tr.Order {
 			if span.Duration().Std().Seconds() < float64(ui.SkipSpans.Value) {
 				continue
 			}
@@ -176,7 +176,7 @@ func (order *RenderOrder) Add(span *trace.Span) {
 		return
 	}
 
-	if order.lastSpan.Finish < span.Start {
+	if order.lastSpan.Finish <= span.Start {
 		order.lastRow.High++
 	} else {
 		order.Rows = append(order.Rows, RenderSpan{
