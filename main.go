@@ -147,11 +147,14 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
 
-		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
-			return layout.UniformInset(unit.Dp(8)).Layout(gtx, view.Minimap)
+		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			return layout.Flex{
+				Axis: layout.Horizontal,
+			}.Layout(gtx,
+				layout.Flexed(1, view.Spans),
+				layout.Rigid(view.Minimap),
+			)
 		}),
-
-		layout.Flexed(1, view.Spans),
 	)
 }
 
@@ -244,7 +247,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		height = smallestSize
 	}
 	size := image.Point{
-		X: gtx.Constraints.Max.X,
+		X: gtx.Px(view.Theme.FingerSize) * 2,
 		Y: height,
 	}
 
