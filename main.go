@@ -26,7 +26,7 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 
-	"loov.dev/traceview/jaeger"
+	"loov.dev/traceview/import/jaeger"
 )
 
 func main() {
