@@ -134,7 +134,8 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 
 	for _, tr := range ui.Timeline.Traces {
 		for _, span := range tr.Order {
-			if span.Duration().Std().Seconds() < float64(ui.SkipSpans.Value) {
+			span.Visible = span.Duration().Std().Seconds() > float64(ui.SkipSpans.Value)
+			if !span.Visible {
 				continue
 			}
 			view.Visible.Add(span)
@@ -294,6 +295,11 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 			x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
 			x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
 
+			span.Anchor = image.Point{X: x0, Y: topY + rowHeight/2}
+
+			if topY+rowHeight < 0 || gtx.Constraints.Max.Y < topY {
+				continue
+			}
 			view.drawSpanCaption(gtx, span, clip.Rect{
 				Min: image.Point{X: x0, Y: topY},
 				Max: image.Point{X: x1, Y: topY + rowHeight},
@@ -301,6 +307,42 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 		}
 		topY += rowAdvance
 	}
+
+	func() {
+		defer op.Save(gtx.Ops).Load()
+
+		var links clip.Path
+		links.Begin(gtx.Ops)
+
+		for _, row := range view.Visible.Rows {
+			for _, parent := range view.Visible.Spans[row.Low:row.High] {
+				if !parent.Visible {
+					continue
+				}
+				for _, child := range parent.Children {
+					if !child.Visible || parent.Anchor.Y > child.Anchor.Y {
+						continue
+					}
+
+					links.MoveTo(layout.FPt(parent.Anchor))
+					links.LineTo(layout.FPt(child.Anchor))
+				}
+			}
+		}
+
+		clip.Stroke{
+			Path: links.End(),
+			Style: clip.StrokeStyle{
+				Width: 1,
+			},
+		}.Op().Add(gtx.Ops)
+
+		paint.ColorOp{
+			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 0x80},
+		}.Add(gtx.Ops)
+
+		paint.PaintOp{}.Add(gtx.Ops)
+	}()
 
 	return layout.Dimensions{
 		Size: size,
@@ -324,7 +366,10 @@ func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, 
 	paint.ColorOp{Color: bg}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 
-	op.Offset(f32.Point{X: float32(bounds.Min.X), Y: float32(bounds.Min.Y)}).Add(gtx.Ops)
+	op.Offset(f32.Point{
+		X: float32(bounds.Min.X) + 2,
+		Y: float32(bounds.Min.Y),
+	}).Add(gtx.Ops)
 	size := bounds.Max.Sub(bounds.Min)
 	gtx.Constraints.Min = size
 	gtx.Constraints.Max = size

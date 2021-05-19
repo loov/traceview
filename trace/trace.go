@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"image"
 	"math"
 	"sort"
 )
@@ -26,6 +27,7 @@ func (id TraceSpanID) IsZero() bool { return id == TraceSpanID{} }
 type Trace struct {
 	TraceID
 	TimeRange
+
 	Spans []*Span
 	Order []*Span
 }
@@ -41,6 +43,9 @@ type Span struct {
 
 	FollowsFrom []*Span
 	FollowedBy  []*Span
+
+	Visible bool
+	Anchor  image.Point
 }
 
 type TimeRange struct {
