@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"gioui.org/app"
+	"gioui.org/f32"
 	"gioui.org/font/gofont"
 	"gioui.org/io/key"
 	"gioui.org/io/system"
@@ -123,8 +124,9 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		Theme:    ui.Theme,
 		Timeline: ui.Timeline,
 
-		RowHeight: ui.Theme.FingerSize.Scale(0.5),
-		RowGap:    unit.Px(1),
+		RowHeight:   ui.Theme.TextSize,
+		RowGap:      unit.Px(1),
+		SpanCaption: ui.Theme.TextSize.Scale(0.8),
 
 		ZoomStart:  ui.Timeline.Start,
 		ZoomFinish: ui.Timeline.Finish,
@@ -234,8 +236,9 @@ type TimelineView struct {
 	*trace.Timeline
 	Visible RenderOrder
 
-	RowHeight unit.Value
-	RowGap    unit.Value
+	RowHeight   unit.Value
+	RowGap      unit.Value
+	SpanCaption unit.Value
 
 	ZoomStart  trace.Time
 	ZoomFinish trace.Time
@@ -264,10 +267,10 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 			x0 := int(durationToPx * float64(span.Start-view.Start))
 			x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.Start))))
 
-			paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
+			view.drawSpan(gtx, span, clip.Rect{
 				Min: image.Point{X: x0, Y: topY},
 				Max: image.Point{X: x1, Y: topY + rowHeight},
-			}.Op())
+			})
 		}
 		topY += rowHeight
 	}
@@ -291,10 +294,10 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 			x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
 			x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
 
-			paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
-				Min: image.Pt(x0, topY),
-				Max: image.Pt(x1, topY+rowHeight),
-			}.Op())
+			view.drawSpanCaption(gtx, span, clip.Rect{
+				Min: image.Point{X: x0, Y: topY},
+				Max: image.Point{X: x1, Y: topY + rowHeight},
+			})
 		}
 		topY += rowAdvance
 	}
@@ -302,6 +305,31 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	return layout.Dimensions{
 		Size: size,
 	}
+}
+
+func (view *TimelineView) drawSpan(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
+	defer op.Save(gtx.Ops).Load()
+
+	bg := view.SpanColor(span)
+	bounds.Op().Add(gtx.Ops)
+	paint.ColorOp{Color: bg}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+}
+
+func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
+	defer op.Save(gtx.Ops).Load()
+
+	bg := view.SpanColor(span)
+	bounds.Op().Add(gtx.Ops)
+	paint.ColorOp{Color: bg}.Add(gtx.Ops)
+	paint.PaintOp{}.Add(gtx.Ops)
+
+	op.Offset(f32.Point{X: float32(bounds.Min.X), Y: float32(bounds.Min.Y)}).Add(gtx.Ops)
+	size := bounds.Max.Sub(bounds.Min)
+	gtx.Constraints.Min = size
+	gtx.Constraints.Max = size
+
+	material.Label(view.Theme, view.SpanCaption, span.Caption).Layout(gtx)
 }
 
 func (view *TimelineView) SpanColor(span *trace.Span) color.NRGBA {

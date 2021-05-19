@@ -78,7 +78,7 @@ func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span) {
 		return
 	}
 
-	node.Caption = span.Func.Package + " " + span.Func.Name
+	node.Caption = span.Func.Name
 	node.Start = span.Start.Time()
 	node.Finish = span.Finish.Time()
 }
