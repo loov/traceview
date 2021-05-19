@@ -54,7 +54,7 @@ func Convert(files ...File) (trace.Timeline, error) {
 
 			timeline.TimeRange = timeline.TimeRange.Expand(node.TimeRange)
 
-			if span.ParentID != nil {
+			if span.ParentID != nil && TraceID(*span.ParentID) != span.Trace.ID {
 				parent, err := ensure(*span.ParentID, span.Trace.ID, nil)
 				if err != nil {
 					return timeline, err
@@ -66,6 +66,7 @@ func Convert(files ...File) (trace.Timeline, error) {
 	}
 
 	timeline.Sort()
+
 	return timeline, nil
 }
 

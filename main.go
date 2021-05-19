@@ -25,8 +25,8 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 
-	"loov.dev/traceview/import/jaeger"
 	_ "loov.dev/traceview/import/jaeger"
+	"loov.dev/traceview/import/monkit"
 	_ "loov.dev/traceview/import/monkit"
 	"loov.dev/traceview/trace"
 )
@@ -49,20 +49,20 @@ func run(ctx context.Context, infile string) error {
 		return fmt.Errorf("failed to read file %q: %w", infile, err)
 	}
 
-	var tracefile jaeger.File
+	var tracefile monkit.File
 	err = json.Unmarshal(data, &tracefile)
 	if err != nil {
 		return fmt.Errorf("failed to parse file %q: %w", infile, err)
 	}
 
-	timeline, err := jaeger.Convert(tracefile.Data...)
+	timeline, err := monkit.Convert(tracefile)
 	if err != nil {
-		return fmt.Errorf("failed to convert jaeger %q: %w", infile, err)
+		return fmt.Errorf("failed to convert monkit %q: %w", infile, err)
 	}
 
 	ui := NewUI(timeline)
 	go func() {
-		w := app.NewWindow(app.Title("Jaeger UI"))
+		w := app.NewWindow(app.Title("traceview"))
 		if err := ui.Run(w); err != nil {
 			log.Println(err)
 			os.Exit(1)
