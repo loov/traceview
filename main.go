@@ -12,7 +12,6 @@ import (
 	"os"
 	"sort"
 	"time"
-	"unsafe"
 
 	"gioui.org/app"
 	"gioui.org/font/gofont"
@@ -266,7 +265,7 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 }
 
 func (view *TimelineView) SpanColor(span *trace.Span) color.NRGBA {
-	p := uintptr(unsafe.Pointer(span))
+	p := int64(span.SpanID) ^ int64(span.TraceID)
 	return color.NRGBA{R: byte(p), G: byte(p >> 8), B: byte(p >> 16), A: 0xFF}
 }
 
