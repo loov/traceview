@@ -10,7 +10,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"sort"
 	"time"
 
 	"gioui.org/app"
@@ -78,16 +77,16 @@ var defaultMargin = unit.Dp(10)
 
 type UI struct {
 	Theme    *material.Theme
-	Timeline *Timeline
+	Timeline *trace.Timeline
 
 	SkipSpans widget.Float
 	ZoomLevel widget.Float
 }
 
-func NewUI(timeline trace.Timeline) *UI {
+func NewUI(timeline *trace.Timeline) *UI {
 	ui := &UI{}
 	ui.Theme = material.NewTheme(gofont.Collection())
-	ui.Timeline = NewTimeline(timeline)
+	ui.Timeline = timeline
 
 	ui.SkipSpans.Value = 0.0
 	ui.ZoomLevel.Value = 1.0
@@ -131,11 +130,13 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		ZoomFinish: ui.Timeline.Finish,
 	}
 
-	for _, node := range ui.Timeline.RenderOrder {
-		if node.Duration().Std().Seconds() < float64(ui.SkipSpans.Value) {
-			continue
+	for _, tr := range ui.Timeline.Traces {
+		for _, span := range tr.Spans {
+			if span.Duration().Std().Seconds() < float64(ui.SkipSpans.Value) {
+				continue
+			}
+			view.Visible.Add(span)
 		}
-		view.Visible = append(view.Visible, node)
 	}
 
 	return layout.Flex{
@@ -152,6 +153,40 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 
 		layout.Flexed(1, view.Spans),
 	)
+}
+
+type RenderOrder struct {
+	Rows  []RenderSpan
+	Spans []*trace.Span
+
+	lastRow  *RenderSpan
+	lastSpan *trace.Span
+}
+
+type RenderSpan struct {
+	Low, High int
+}
+
+func (order *RenderOrder) Add(span *trace.Span) {
+	order.Spans = append(order.Spans, span)
+	if order.lastSpan == nil {
+		order.Rows = append(order.Rows, RenderSpan{Low: 0, High: 1})
+		order.lastSpan = span
+		order.lastRow = &order.Rows[len(order.Rows)-1]
+		return
+	}
+
+	if order.lastSpan.Finish < span.Start {
+		order.lastRow.High++
+	} else {
+		order.Rows = append(order.Rows, RenderSpan{
+			Low:  len(order.Spans) - 1,
+			High: len(order.Spans),
+		})
+		order.lastRow = &order.Rows[len(order.Rows)-1]
+	}
+
+	order.lastSpan = span
 }
 
 type DurationSliderStyle struct {
@@ -193,8 +228,8 @@ func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
 type TimelineView struct {
 	Theme *material.Theme
 
-	*Timeline
-	Visible []*trace.Span
+	*trace.Timeline
+	Visible RenderOrder
 
 	RowHeight unit.Value
 	RowGap    unit.Value
@@ -204,7 +239,7 @@ type TimelineView struct {
 }
 
 func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
-	height := gtx.Px(unit.Dp(1)) * len(view.Visible)
+	height := gtx.Px(unit.Dp(1)) * len(view.Visible.Rows)
 	if smallestSize := gtx.Px(view.Theme.FingerSize); height < smallestSize {
 		height = smallestSize
 	}
@@ -213,7 +248,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		Y: height,
 	}
 
-	rowHeight := int(float32(size.Y) / float32(len(view.Visible)))
+	rowHeight := int(float32(size.Y) / float32(len(view.Visible.Rows)))
 	if rowHeight < 1 {
 		rowHeight = 1
 	}
@@ -221,15 +256,16 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 	topY := 0
 
 	durationToPx := float64(size.X) / float64(view.Duration())
-	for _, span := range view.Visible {
-		x0 := int(durationToPx * float64(span.Start-view.Start))
-		x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.Start))))
+	for _, row := range view.Visible.Rows {
+		for _, span := range view.Visible.Spans[row.Low:row.High] {
+			x0 := int(durationToPx * float64(span.Start-view.Start))
+			x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.Start))))
 
-		paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
-			Min: image.Point{X: x0, Y: topY},
-			Max: image.Point{X: x1, Y: topY + rowHeight},
-		}.Op())
-
+			paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
+				Min: image.Point{X: x0, Y: topY},
+				Max: image.Point{X: x1, Y: topY + rowHeight},
+			}.Op())
+		}
 		topY += rowHeight
 	}
 
@@ -247,15 +283,16 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	topY := 0
 
 	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
-	for _, span := range view.Visible {
-		x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
-		x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
+	for _, row := range view.Visible.Rows {
+		for _, span := range view.Visible.Spans[row.Low:row.High] {
+			x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
+			x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
 
-		paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
-			Min: image.Pt(x0, topY),
-			Max: image.Pt(x1, topY+rowHeight),
-		}.Op())
-
+			paint.FillShape(gtx.Ops, view.SpanColor(span), clip.Rect{
+				Min: image.Pt(x0, topY),
+				Max: image.Pt(x1, topY+rowHeight),
+			}.Op())
+		}
 		topY += rowAdvance
 	}
 
@@ -267,48 +304,4 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 func (view *TimelineView) SpanColor(span *trace.Span) color.NRGBA {
 	p := int64(span.SpanID) ^ int64(span.TraceID)
 	return color.NRGBA{R: byte(p), G: byte(p >> 8), B: byte(p >> 16), A: 0xFF}
-}
-
-type Timeline struct {
-	trace.Timeline
-	RenderOrder []*trace.Span
-}
-
-func NewTimeline(timeline trace.Timeline) *Timeline {
-	roots := []*trace.Span{}
-
-	for _, tr := range timeline.Traces {
-		for _, span := range tr.Spans {
-			if len(span.Parents) == 0 {
-				roots = append(roots, span)
-			}
-		}
-	}
-
-	sort.Slice(roots, func(i, k int) bool {
-		a, b := roots[i], roots[k]
-		return a.TimeRange.Less(b.TimeRange)
-	})
-
-	seen := make(map[*trace.Span]struct{})
-	renderOrder := []*trace.Span{}
-	var include func(span *trace.Span)
-	include = func(span *trace.Span) {
-		if _, ok := seen[span]; ok {
-			return
-		}
-		seen[span] = struct{}{}
-		renderOrder = append(renderOrder, span)
-		for _, child := range span.Children {
-			include(child)
-		}
-	}
-	for _, root := range roots {
-		include(root)
-	}
-
-	return &Timeline{
-		Timeline:    timeline,
-		RenderOrder: renderOrder,
-	}
 }

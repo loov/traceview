@@ -7,7 +7,7 @@ import (
 	"loov.dev/traceview/trace"
 )
 
-func Convert(traces ...Trace) (trace.Timeline, error) {
+func Convert(traces ...Trace) (*trace.Timeline, error) {
 	var timeline trace.Timeline
 
 	traceByID := make(map[trace.TraceID]*trace.Trace)
@@ -53,7 +53,7 @@ func Convert(traces ...Trace) (trace.Timeline, error) {
 
 			node, err := ensure(span.TraceSpanID, span)
 			if err != nil {
-				return timeline, err
+				return nil, err
 			}
 
 			timeline.TimeRange = timeline.TimeRange.Expand(node.TimeRange)
@@ -63,14 +63,14 @@ func Convert(traces ...Trace) (trace.Timeline, error) {
 				case ChildOf:
 					parent, err := ensure(ref.TraceSpanID, nil)
 					if err != nil {
-						return timeline, err
+						return nil, err
 					}
 					parent.Children = append(parent.Children, node)
 					node.Parents = append(node.Parents, parent)
 				case FollowsFrom:
 					parent, err := ensure(ref.TraceSpanID, nil)
 					if err != nil {
-						return timeline, err
+						return nil, err
 					}
 					parent.FollowedBy = append(parent.FollowedBy, node)
 					node.FollowsFrom = append(node.FollowsFrom, parent)
@@ -80,7 +80,7 @@ func Convert(traces ...Trace) (trace.Timeline, error) {
 	}
 
 	timeline.Sort()
-	return timeline, nil
+	return &timeline, nil
 }
 
 func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span) {
