@@ -134,6 +134,7 @@ type UI struct {
 
 	SkipSpans widget.Float
 	ZoomLevel widget.Float
+	RowHeight widget.Float
 }
 
 func NewUI(timeline *trace.Timeline) *UI {
@@ -143,6 +144,7 @@ func NewUI(timeline *trace.Timeline) *UI {
 
 	ui.SkipSpans.Value = 0.01
 	ui.ZoomLevel.Value = 1.0
+	ui.RowHeight.Value = 8.0
 	return ui
 }
 
@@ -172,37 +174,40 @@ func (ui *UI) Run(w *app.Window) error {
 }
 
 func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
-	view := &TimelineView{
-		Theme:    ui.Theme,
-		Timeline: ui.Timeline,
-
-		RowHeight:   ui.Theme.TextSize.Scale(0.8),
-		RowGap:      unit.Px(1),
-		SpanCaption: ui.Theme.TextSize.Scale(0.6),
-
-		ZoomStart:  ui.Timeline.Start,
-		ZoomFinish: ui.Timeline.Start + trace.NewTime(time.Duration(float64(ui.ZoomLevel.Value)*float64(time.Second))),
-	}
-
-	for _, tr := range ui.Timeline.Traces {
-		for _, span := range tr.Order {
-			span.Visible = span.Duration().Std().Seconds() > float64(ui.SkipSpans.Value)
-			if !span.Visible {
-				continue
-			}
-			view.Visible.Add(span)
-		}
-	}
 
 	return layout.Flex{
 		Axis: layout.Vertical,
 	}.Layout(gtx,
+		layout.Rigid(
+			HeightSlider(ui.Theme, &ui.RowHeight, "Row", 6, 16).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration().Std()).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
 
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+			view := &TimelineView{
+				Theme:    ui.Theme,
+				Timeline: ui.Timeline,
+
+				RowHeight:   unit.Dp(ui.RowHeight.Value),
+				RowGap:      unit.Px(1),
+				SpanCaption: unit.Dp(ui.RowHeight.Value - 4),
+
+				ZoomStart:  ui.Timeline.Start,
+				ZoomFinish: ui.Timeline.Start + trace.NewTime(time.Duration(float64(ui.ZoomLevel.Value)*float64(time.Second))),
+			}
+
+			for _, tr := range ui.Timeline.Traces {
+				for _, span := range tr.Order {
+					span.Visible = span.Duration().Std().Seconds() > float64(ui.SkipSpans.Value)
+					if !span.Visible {
+						continue
+					}
+					view.Visible.Add(span)
+				}
+			}
+
 			return layout.Flex{
 				Axis: layout.Horizontal,
 			}.Layout(gtx,
@@ -279,6 +284,38 @@ func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
 				slider.Value,
 				float32(slider.Min.Seconds()),
 				float32(slider.Max.Seconds())).Layout,
+		),
+	)
+}
+
+type HeightSliderStyle struct {
+	Theme *material.Theme
+	Value *widget.Float
+	Text  string
+	Min   float32
+	Max   float32
+}
+
+func HeightSlider(theme *material.Theme, value *widget.Float, text string, min, max float32) HeightSliderStyle {
+	return HeightSliderStyle{
+		Theme: theme,
+		Value: value,
+		Text:  text,
+		Min:   min,
+		Max:   max,
+	}
+}
+
+func (slider HeightSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{
+		Alignment: layout.Middle,
+	}.Layout(gtx,
+		layout.Rigid(
+			material.Body1(slider.Theme, slider.Text+fmt.Sprintf(" %.0f", slider.Value.Value)).Layout,
+		),
+		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
+		layout.Flexed(1,
+			material.Slider(slider.Theme, slider.Value, slider.Min, slider.Max).Layout,
 		),
 	)
 }
