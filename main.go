@@ -181,7 +181,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(
 			HeightSlider(ui.Theme, &ui.RowHeight, "Row Height", 6, 24).Layout),
 		layout.Rigid(
-			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration().Std()).Layout),
+			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Second/10, ui.Timeline.Duration().Std()).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
 
@@ -271,7 +271,7 @@ func DurationSlider(theme *material.Theme, value *widget.Float, text string, min
 }
 
 func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
-	return layout.Flex{
+	dim := layout.Flex{
 		Alignment: layout.Middle,
 	}.Layout(gtx,
 		layout.Rigid(
@@ -286,6 +286,13 @@ func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
 				float32(slider.Max.Seconds())).Layout,
 		),
 	)
+	if slider.Value.Value < float32(slider.Min.Seconds()) {
+		slider.Value.Value = float32(slider.Min.Seconds())
+	}
+	if slider.Value.Value > float32(slider.Max.Seconds()) {
+		slider.Value.Value = float32(slider.Max.Seconds())
+	}
+	return dim
 }
 
 type HeightSliderStyle struct {
@@ -307,7 +314,7 @@ func HeightSlider(theme *material.Theme, value *widget.Float, text string, min, 
 }
 
 func (slider HeightSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
-	return layout.Flex{
+	dim := layout.Flex{
 		Alignment: layout.Middle,
 	}.Layout(gtx,
 		layout.Rigid(
@@ -318,6 +325,13 @@ func (slider HeightSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
 			material.Slider(slider.Theme, slider.Value, slider.Min, slider.Max).Layout,
 		),
 	)
+	if slider.Value.Value < slider.Min {
+		slider.Value.Value = slider.Min
+	}
+	if slider.Value.Value > slider.Max {
+		slider.Value.Value = slider.Max
+	}
+	return dim
 }
 
 type TimelineView struct {
@@ -391,6 +405,9 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 			span.Anchor = image.Point{X: x0, Y: topY + rowHeight/2}
 
 			if topY+rowHeight < 0 || gtx.Constraints.Max.Y < topY {
+				continue
+			}
+			if span.Finish < view.Start || view.Finish < span.Start {
 				continue
 			}
 			view.drawSpanCaption(gtx, span, clip.Rect{
