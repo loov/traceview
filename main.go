@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"flag"
 	"fmt"
 	"image"
 	"image/color"
 	"log"
 	"math"
 	"os"
+	"os/signal"
 	"time"
+
+	"github.com/zeebo/clingy"
 
 	"gioui.org/app"
 	"gioui.org/f32"
@@ -25,41 +27,92 @@ import (
 	"gioui.org/widget"
 	"gioui.org/widget/material"
 
-	_ "loov.dev/traceview/import/jaeger"
+	"loov.dev/traceview/import/jaeger"
 	"loov.dev/traceview/import/monkit"
-	_ "loov.dev/traceview/import/monkit"
 	"loov.dev/traceview/trace"
 )
 
 func main() {
-	flag.Parse()
-	infile := flag.Arg(0)
-	if infile == "" {
-		return
-	}
+	os.Exit(func() int {
+		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+		defer cancel()
 
-	if err := run(context.Background(), infile); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-	}
+		name := ""
+		if len(os.Args) > 0 {
+			name = os.Args[0]
+		} else if exename, err := os.Executable(); err == nil {
+			name = exename
+		}
+
+		env := clingy.Environment{
+			Name: name,
+			Args: os.Args[1:],
+		}
+
+		_, err := env.Run(ctx, func(cmds clingy.Commands, flags clingy.Flags) {
+			cmds.New("jaeger", "load jaeger .json trace", new(cmdJaeger))
+			cmds.New("monkit", "load monkit .json trace", new(cmdMonkit))
+		})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		return 0
+	}())
 }
 
-func run(ctx context.Context, infile string) error {
-	data, err := os.ReadFile(infile)
+type cmdMonkit struct{ source string }
+type cmdJaeger struct{ source string }
+
+func (cmd *cmdMonkit) Setup(args clingy.Arguments, flags clingy.Flags) {
+	cmd.source = args.New("trace", "trace file").(string)
+}
+
+func (cmd *cmdJaeger) Setup(args clingy.Arguments, flags clingy.Flags) {
+	cmd.source = args.New("trace", "trace file").(string)
+}
+
+func (cmd *cmdMonkit) Execute(ctx clingy.Context) error {
+	data, err := os.ReadFile(cmd.source)
 	if err != nil {
-		return fmt.Errorf("failed to read file %q: %w", infile, err)
+		return fmt.Errorf("failed to read trace: %w", err)
 	}
 
 	var tracefile monkit.File
 	err = json.Unmarshal(data, &tracefile)
 	if err != nil {
-		return fmt.Errorf("failed to parse file %q: %w", infile, err)
+		return fmt.Errorf("failed to parse file %q: %w", cmd.source, err)
 	}
 
 	timeline, err := monkit.Convert(tracefile)
 	if err != nil {
-		return fmt.Errorf("failed to convert monkit %q: %w", infile, err)
+		return fmt.Errorf("failed to convert monkit %q: %w", cmd.source, err)
 	}
 
+	return run(ctx, timeline)
+}
+
+func (cmd *cmdJaeger) Execute(ctx clingy.Context) error {
+	data, err := os.ReadFile(cmd.source)
+	if err != nil {
+		return fmt.Errorf("failed to read trace: %w", err)
+	}
+
+	var tracefile jaeger.File
+	err = json.Unmarshal(data, &tracefile)
+	if err != nil {
+		return fmt.Errorf("failed to parse file %q: %w", cmd.source, err)
+	}
+
+	timeline, err := jaeger.Convert(tracefile.Data...)
+	if err != nil {
+		return fmt.Errorf("failed to convert jaeger %q: %w", cmd.source, err)
+	}
+
+	return run(ctx, timeline)
+}
+
+func run(ctx context.Context, timeline *trace.Timeline) error {
 	ui := NewUI(timeline)
 	go func() {
 		w := app.NewWindow(app.Title("traceview"))
@@ -69,7 +122,6 @@ func run(ctx context.Context, infile string) error {
 		}
 		os.Exit(0)
 	}()
-
 	app.Main()
 	return nil
 }
