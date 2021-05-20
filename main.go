@@ -144,7 +144,7 @@ func NewUI(timeline *trace.Timeline) *UI {
 
 	ui.SkipSpans.Value = 0.01
 	ui.ZoomLevel.Value = 1.0
-	ui.RowHeight.Value = 8.0
+	ui.RowHeight.Value = 12.0
 	return ui
 }
 
@@ -179,7 +179,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		Axis: layout.Vertical,
 	}.Layout(gtx,
 		layout.Rigid(
-			HeightSlider(ui.Theme, &ui.RowHeight, "Row", 6, 16).Layout),
+			HeightSlider(ui.Theme, &ui.RowHeight, "Row Height", 6, 24).Layout),
 		layout.Rigid(
 			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Microsecond, ui.Timeline.Duration().Std()).Layout),
 		layout.Rigid(
@@ -192,7 +192,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 
 				RowHeight:   unit.Dp(ui.RowHeight.Value),
 				RowGap:      unit.Px(1),
-				SpanCaption: unit.Dp(ui.RowHeight.Value - 4),
+				SpanCaption: unit.Dp(ui.RowHeight.Value - 2),
 
 				ZoomStart:  ui.Timeline.Start,
 				ZoomFinish: ui.Timeline.Start + trace.NewTime(time.Duration(float64(ui.ZoomLevel.Value)*float64(time.Second))),
