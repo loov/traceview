@@ -141,7 +141,7 @@ func NewUI(timeline *trace.Timeline) *UI {
 	ui.Theme = material.NewTheme(gofont.Collection())
 	ui.Timeline = timeline
 
-	ui.SkipSpans.Value = 0.0
+	ui.SkipSpans.Value = 0.01
 	ui.ZoomLevel.Value = 1.0
 	return ui
 }
@@ -176,12 +176,12 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 		Theme:    ui.Theme,
 		Timeline: ui.Timeline,
 
-		RowHeight:   ui.Theme.TextSize,
+		RowHeight:   ui.Theme.TextSize.Scale(0.8),
 		RowGap:      unit.Px(1),
-		SpanCaption: ui.Theme.TextSize.Scale(0.8),
+		SpanCaption: ui.Theme.TextSize.Scale(0.6),
 
 		ZoomStart:  ui.Timeline.Start,
-		ZoomFinish: ui.Timeline.Finish,
+		ZoomFinish: ui.Timeline.Start + trace.NewTime(time.Duration(float64(ui.ZoomLevel.Value)*float64(time.Second))),
 	}
 
 	for _, tr := range ui.Timeline.Traces {
@@ -298,6 +298,8 @@ type TimelineView struct {
 }
 
 func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
+	defer op.Save(gtx.Ops).Load()
+
 	height := gtx.Px(unit.Dp(1)) * len(view.Visible.Rows)
 	if smallestSize := gtx.Px(view.Theme.FingerSize); height < smallestSize {
 		height = smallestSize
@@ -306,6 +308,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		X: gtx.Px(view.Theme.FingerSize) * 2,
 		Y: height,
 	}
+	clip.Rect{Max: size}.Add(gtx.Ops)
 
 	rowHeight := int(float32(size.Y) / float32(len(view.Visible.Rows)))
 	if rowHeight < 1 {
@@ -334,13 +337,14 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 }
 
 func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
+	defer op.Save(gtx.Ops).Load()
 	size := gtx.Constraints.Max
+	clip.Rect{Max: size}.Add(gtx.Ops)
 
 	rowHeight := gtx.Px(view.RowHeight)
 	rowAdvance := rowHeight + gtx.Px(view.RowGap)
 
 	topY := 0
-
 	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
 	for _, row := range view.Visible.Rows {
 		for _, span := range view.Visible.Spans[row.Low:row.High] {
@@ -390,7 +394,7 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 		}.Op().Add(gtx.Ops)
 
 		paint.ColorOp{
-			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 0x80},
+			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 0xAA},
 		}.Add(gtx.Ops)
 
 		paint.PaintOp{}.Add(gtx.Ops)
