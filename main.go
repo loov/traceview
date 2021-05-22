@@ -30,6 +30,7 @@ import (
 	"loov.dev/traceview/import/jaeger"
 	"loov.dev/traceview/import/monkit"
 	"loov.dev/traceview/trace"
+	"loov.dev/traceview/tui"
 )
 
 func main() {
@@ -132,9 +133,13 @@ type UI struct {
 	Theme    *material.Theme
 	Timeline *trace.Timeline
 
-	SkipSpans widget.Float
-	ZoomLevel widget.Float
-	RowHeight widget.Float
+	SkipSpans tui.Duration
+	ZoomLevel tui.Duration
+	RowHeight tui.Px
+
+	clickAlpha widget.Clickable
+	clickBeta  widget.Clickable
+	clickGamma widget.Clickable
 }
 
 func NewUI(timeline *trace.Timeline) *UI {
@@ -142,9 +147,9 @@ func NewUI(timeline *trace.Timeline) *UI {
 	ui.Theme = material.NewTheme(gofont.Collection())
 	ui.Timeline = timeline
 
-	ui.SkipSpans.Value = 0.01
-	ui.ZoomLevel.Value = 1.0
-	ui.RowHeight.Value = 12.0
+	ui.SkipSpans.Value = 100 * time.Millisecond
+	ui.ZoomLevel.Value = time.Second
+	ui.RowHeight.Value = 12
 	return ui
 }
 
@@ -174,47 +179,67 @@ func (ui *UI) Run(w *app.Window) error {
 }
 
 func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
+	return layout.Flex{
+		Axis: layout.Horizontal,
+	}.Layout(gtx,
+		layout.Rigid(ui.LayoutControls),
+		layout.Flexed(1, ui.LayoutTimeline),
+	)
+}
+
+func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
+	view := &TimelineView{
+		Theme:    ui.Theme,
+		Timeline: ui.Timeline,
+
+		RowHeight:   unit.Dp(ui.RowHeight.Value),
+		RowGap:      unit.Px(1),
+		SpanCaption: unit.Dp(ui.RowHeight.Value - 2),
+
+		ZoomStart:  ui.Timeline.Start,
+		ZoomFinish: ui.Timeline.Start + trace.NewTime(ui.ZoomLevel.Value),
+	}
+
+	for _, tr := range ui.Timeline.Traces {
+		for _, span := range tr.Order {
+			span.Visible = span.Duration().Std() > ui.SkipSpans.Value
+			if !span.Visible {
+				continue
+			}
+			view.Visible.Add(span)
+		}
+	}
 
 	return layout.Flex{
-		Axis: layout.Vertical,
+		Axis: layout.Horizontal,
 	}.Layout(gtx,
-		layout.Rigid(
-			HeightSlider(ui.Theme, &ui.RowHeight, "Row Height", 6, 24).Layout),
-		layout.Rigid(
-			DurationSlider(ui.Theme, &ui.ZoomLevel, "Zoom", time.Second/10, ui.Timeline.Duration().Std()).Layout),
-		layout.Rigid(
-			DurationSlider(ui.Theme, &ui.SkipSpans, "Skip", 0, 5*time.Second).Layout),
-
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			view := &TimelineView{
-				Theme:    ui.Theme,
-				Timeline: ui.Timeline,
-
-				RowHeight:   unit.Dp(ui.RowHeight.Value),
-				RowGap:      unit.Px(1),
-				SpanCaption: unit.Dp(ui.RowHeight.Value - 2),
-
-				ZoomStart:  ui.Timeline.Start,
-				ZoomFinish: ui.Timeline.Start + trace.NewTime(time.Duration(float64(ui.ZoomLevel.Value)*float64(time.Second))),
-			}
-
-			for _, tr := range ui.Timeline.Traces {
-				for _, span := range tr.Order {
-					span.Visible = span.Duration().Std().Seconds() > float64(ui.SkipSpans.Value)
-					if !span.Visible {
-						continue
-					}
-					view.Visible.Add(span)
-				}
-			}
-
-			return layout.Flex{
-				Axis: layout.Horizontal,
-			}.Layout(gtx,
-				layout.Flexed(1, view.Spans),
-				layout.Rigid(view.Minimap),
-			)
+			return tui.Box(color.NRGBA{0x40, 0x40, 0x48, 0xFF}).Layout(gtx, view.Spans)
 		}),
+		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
+			return tui.ContentWidthStyle{
+				MaxWidth: unit.Dp(100),
+			}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+				return tui.Box(color.NRGBA{R: 0x20, G: 0x20, B: 0x28, A: 0xFF}).Layout(gtx, view.Minimap)
+			})
+		}),
+	)
+}
+
+func (ui *UI) LayoutControls(gtx layout.Context) layout.Dimensions {
+	th := ui.Theme
+	return tui.SidePanel(th).Layout(gtx,
+		func(gtx layout.Context) layout.Dimensions {
+			return tui.Panel(th, "Filter").Layout(gtx,
+				tui.DurationEditor(th, &ui.SkipSpans, "Skip Spans", 0, 5*time.Second).Layout,
+			)
+		},
+		func(gtx layout.Context) layout.Dimensions {
+			return tui.Panel(th, "View").Layout(gtx,
+				tui.DurationEditor(th, &ui.ZoomLevel, "Zoom", time.Second/10, ui.Timeline.Duration().Std()).Layout,
+				tui.PxEditor(th, &ui.RowHeight, "Row Height", 6, 24).Layout,
+			)
+		},
 	)
 }
 
@@ -252,88 +277,6 @@ func (order *RenderOrder) Add(span *trace.Span) {
 	order.lastSpan = span
 }
 
-type DurationSliderStyle struct {
-	Theme *material.Theme
-	Value *widget.Float
-	Text  string
-	Min   time.Duration
-	Max   time.Duration
-}
-
-func DurationSlider(theme *material.Theme, value *widget.Float, text string, min, max time.Duration) DurationSliderStyle {
-	return DurationSliderStyle{
-		Theme: theme,
-		Value: value,
-		Text:  text,
-		Min:   min,
-		Max:   max,
-	}
-}
-
-func (slider DurationSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
-	dim := layout.Flex{
-		Alignment: layout.Middle,
-	}.Layout(gtx,
-		layout.Rigid(
-			material.Body1(slider.Theme,
-				slider.Text+fmt.Sprintf(" %.2f sec", slider.Value.Value)).Layout,
-		),
-		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
-		layout.Flexed(1,
-			material.Slider(slider.Theme,
-				slider.Value,
-				float32(slider.Min.Seconds()),
-				float32(slider.Max.Seconds())).Layout,
-		),
-	)
-	if slider.Value.Value < float32(slider.Min.Seconds()) {
-		slider.Value.Value = float32(slider.Min.Seconds())
-	}
-	if slider.Value.Value > float32(slider.Max.Seconds()) {
-		slider.Value.Value = float32(slider.Max.Seconds())
-	}
-	return dim
-}
-
-type HeightSliderStyle struct {
-	Theme *material.Theme
-	Value *widget.Float
-	Text  string
-	Min   float32
-	Max   float32
-}
-
-func HeightSlider(theme *material.Theme, value *widget.Float, text string, min, max float32) HeightSliderStyle {
-	return HeightSliderStyle{
-		Theme: theme,
-		Value: value,
-		Text:  text,
-		Min:   min,
-		Max:   max,
-	}
-}
-
-func (slider HeightSliderStyle) Layout(gtx layout.Context) layout.Dimensions {
-	dim := layout.Flex{
-		Alignment: layout.Middle,
-	}.Layout(gtx,
-		layout.Rigid(
-			material.Body1(slider.Theme, slider.Text+fmt.Sprintf(" %.0f", slider.Value.Value)).Layout,
-		),
-		layout.Rigid(layout.Spacer{Width: unit.Dp(16)}.Layout),
-		layout.Flexed(1,
-			material.Slider(slider.Theme, slider.Value, slider.Min, slider.Max).Layout,
-		),
-	)
-	if slider.Value.Value < slider.Min {
-		slider.Value.Value = slider.Min
-	}
-	if slider.Value.Value > slider.Max {
-		slider.Value.Value = slider.Max
-	}
-	return dim
-}
-
 type TimelineView struct {
 	Theme *material.Theme
 
@@ -356,7 +299,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		height = smallestSize
 	}
 	size := image.Point{
-		X: gtx.Px(view.Theme.FingerSize) * 2,
+		X: gtx.Constraints.Max.X,
 		Y: height,
 	}
 	clip.Rect{Max: size}.Add(gtx.Ops)
