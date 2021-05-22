@@ -147,9 +147,9 @@ func NewUI(timeline *trace.Timeline) *UI {
 	ui.Theme = material.NewTheme(gofont.Collection())
 	ui.Timeline = timeline
 
-	ui.SkipSpans.Value = 100 * time.Millisecond
-	ui.ZoomLevel.Value = time.Second
-	ui.RowHeight.Value = 12
+	ui.SkipSpans.SetValue(100 * time.Millisecond)
+	ui.ZoomLevel.SetValue(time.Second)
+	ui.RowHeight.SetValue(12)
 	return ui
 }
 

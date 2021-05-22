@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"image/color"
 
 	"gioui.org/layout"
@@ -13,6 +14,12 @@ type Px struct {
 	Value  float32
 	valid  bool
 	editor widget.Editor
+}
+
+func (px *Px) SetValue(value float32) {
+	px.Value = value
+	px.valid = true
+	px.editor.SetText(fmt.Sprintf("%.0f", value))
 }
 
 type PxEditorStyle struct {

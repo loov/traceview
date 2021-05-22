@@ -16,6 +16,12 @@ type Duration struct {
 	editor widget.Editor
 }
 
+func (dur *Duration) SetValue(value time.Duration) {
+	dur.Value = value
+	dur.valid = true
+	dur.editor.SetText(value.String())
+}
+
 type DurationEditorStyle struct {
 	Caption material.LabelStyle
 	Value   *Duration
