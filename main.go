@@ -336,7 +336,7 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	clip.Rect{Max: size}.Add(gtx.Ops)
 
 	rowHeight := gtx.Px(view.RowHeight)
-	rowAdvance := rowHeight + gtx.Px(view.RowGap)
+	rowAdvance := rowHeight
 
 	topY := 0
 	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
@@ -377,8 +377,15 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 						continue
 					}
 
+					midx := float32(parent.Anchor.X+child.Anchor.X) / 2
+					midy := float32(parent.Anchor.Y+child.Anchor.Y) / 2
+
 					links.MoveTo(layout.FPt(parent.Anchor))
-					links.LineTo(layout.FPt(child.Anchor))
+					links.CubeTo(
+						f32.Point{X: float32(parent.Anchor.X), Y: midy},
+						f32.Point{X: midx, Y: float32(child.Anchor.Y)},
+						layout.FPt(child.Anchor),
+					)
 				}
 			}
 		}
@@ -386,12 +393,12 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 		clip.Stroke{
 			Path: links.End(),
 			Style: clip.StrokeStyle{
-				Width: 1,
+				Width: 2,
 			},
 		}.Op().Add(gtx.Ops)
 
 		paint.ColorOp{
-			Color: color.NRGBA{R: 0, G: 0, B: 0, A: 0xAA},
+			Color: color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xAA},
 		}.Add(gtx.Ops)
 
 		paint.PaintOp{}.Add(gtx.Ops)
