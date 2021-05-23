@@ -60,7 +60,7 @@ func (edit DurationEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
 		layout.Flexed(1, edit.Caption.Layout),
 		layout.Rigid(layout.Spacer{Width: Small}.Layout),
 		layout.Flexed(2, func(gtx layout.Context) layout.Dimensions {
-			return RoundBox(color.NRGBA{0x40, 0x40, 0x40, 0xFF}).Layout(gtx, edit.Editor.Layout)
+			return RoundBox(color.NRGBA{0x40, 0x40, 0x40, 0xFF}).Layout(gtx.Disabled(), edit.Editor.Layout)
 		}),
 		layout.Rigid(layout.Spacer{Width: Small}.Layout),
 		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}).Layout),
