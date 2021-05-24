@@ -18,6 +18,10 @@ type Px struct {
 }
 
 func (px *Px) SetValue(value float32) {
+	if px.Value == value {
+		return
+	}
+
 	px.Value = value
 	px.valid = true
 	px.editor.SetText(fmt.Sprintf("%.0f", value))

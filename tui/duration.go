@@ -18,6 +18,9 @@ type Duration struct {
 }
 
 func (dur *Duration) SetValue(value time.Duration) {
+	if dur.Value == value {
+		return
+	}
 	dur.Value = value
 	dur.valid = true
 	dur.editor.SetText(value.String())
@@ -54,7 +57,23 @@ func DurationEditor(theme *material.Theme, value *Duration, caption string, min,
 	}
 }
 
+func (edit DurationEditorStyle) setValue(value time.Duration) {
+	if value < edit.Min {
+		value = edit.Min
+	}
+	if value > edit.Max {
+		value = edit.Max
+	}
+
+	edit.Value.SetValue(value)
+}
+
 func (edit DurationEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
+	if edit.Value.spin.Dragging() && edit.Value.spin.Delta != 0 {
+		changed := float64(edit.Value.Value) + float64(edit.Value.spin.Delta)*float64(time.Second/10)
+		edit.setValue(time.Duration(changed))
+	}
+
 	dim := layout.Flex{
 		Alignment: layout.Middle,
 	}.Layout(gtx,
@@ -66,11 +85,8 @@ func (edit DurationEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
 		layout.Rigid(layout.Spacer{Width: Small}.Layout),
 		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}, color.NRGBA{0x80, 0x80, 0x80, 0xFF}, &edit.Value.spin).Layout),
 	)
-	if edit.Value.Value < edit.Min {
-		edit.Value.Value = edit.Min
-	}
-	if edit.Value.Value > edit.Max {
-		edit.Value.Value = edit.Max
-	}
+
+	edit.setValue(edit.Value.Value)
+
 	return dim
 }

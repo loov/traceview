@@ -236,11 +236,15 @@ func (ui *UI) LayoutControls(gtx layout.Context) layout.Dimensions {
 		},
 		func(gtx layout.Context) layout.Dimensions {
 			return tui.Panel(th, "View").Layout(gtx,
-				tui.DurationEditor(th, &ui.ZoomLevel, "Zoom", time.Second/10, ui.Timeline.Duration().Std()).Layout,
+				tui.DurationEditor(th, &ui.ZoomLevel, "Zoom", time.Second/10, nextSecond(ui.Timeline.Duration().Std())).Layout,
 				tui.PxEditor(th, &ui.RowHeight, "Row Height", 6, 24).Layout,
 			)
 		},
 	)
+}
+
+func nextSecond(s time.Duration) time.Duration {
+	return time.Second * ((s + time.Second - 1) / time.Second)
 }
 
 type RenderOrder struct {
