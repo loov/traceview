@@ -13,6 +13,7 @@ import (
 type Px struct {
 	Value  float32
 	valid  bool
+	spin   Spin
 	editor widget.Editor
 }
 
@@ -53,8 +54,23 @@ func PxEditor(theme *material.Theme, value *Px, caption string, min, max float32
 	}
 }
 
+func (edit PxEditorStyle) setValue(value float32) {
+	if value < edit.Min {
+		value = edit.Min
+	}
+	if value > edit.Max {
+		value = edit.Max
+	}
+
+	edit.Value.SetValue(value)
+}
+
 func (edit PxEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
-	dim := layout.Flex{
+	if edit.Value.spin.Dragging() && edit.Value.spin.Delta != 0 {
+		edit.setValue(edit.Value.Value + edit.Value.spin.Delta*0.1)
+	}
+
+	return layout.Flex{
 		Alignment: layout.Middle,
 	}.Layout(gtx,
 		layout.Flexed(1, edit.Caption.Layout),
@@ -63,13 +79,6 @@ func (edit PxEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
 			return RoundBox(color.NRGBA{0x40, 0x40, 0x40, 0xFF}).Layout(gtx.Disabled(), edit.Editor.Layout)
 		}),
 		layout.Rigid(layout.Spacer{Width: Small}.Layout),
-		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}).Layout),
+		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}, color.NRGBA{0x80, 0x80, 0x80, 0xFF}, &edit.Value.spin).Layout),
 	)
-	if edit.Value.Value < edit.Min {
-		edit.Value.Value = edit.Min
-	}
-	if edit.Value.Value > edit.Max {
-		edit.Value.Value = edit.Max
-	}
-	return dim
 }

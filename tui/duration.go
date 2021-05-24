@@ -14,6 +14,7 @@ type Duration struct {
 	Value  time.Duration
 	valid  bool
 	editor widget.Editor
+	spin   Spin
 }
 
 func (dur *Duration) SetValue(value time.Duration) {
@@ -63,7 +64,7 @@ func (edit DurationEditorStyle) Layout(gtx layout.Context) layout.Dimensions {
 			return RoundBox(color.NRGBA{0x40, 0x40, 0x40, 0xFF}).Layout(gtx.Disabled(), edit.Editor.Layout)
 		}),
 		layout.Rigid(layout.Spacer{Width: Small}.Layout),
-		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}).Layout),
+		layout.Rigid(Spinner(color.NRGBA{0x60, 0x60, 0x60, 0xFF}, color.NRGBA{0x80, 0x80, 0x80, 0xFF}, &edit.Value.spin).Layout),
 	)
 	if edit.Value.Value < edit.Min {
 		edit.Value.Value = edit.Min
