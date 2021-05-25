@@ -50,7 +50,7 @@ func main() {
 			Args: os.Args[1:],
 		}
 
-		_, err := env.Run(ctx, func(cmds clingy.Commands, flags clingy.Flags) {
+		_, err := env.Run(ctx, func(cmds clingy.Commands) {
 			cmds.New("jaeger", "load jaeger .json trace", new(cmdJaeger))
 			cmds.New("monkit", "load monkit .json trace", new(cmdMonkit))
 		})
@@ -65,12 +65,12 @@ func main() {
 type cmdMonkit struct{ source string }
 type cmdJaeger struct{ source string }
 
-func (cmd *cmdMonkit) Setup(args clingy.Arguments, flags clingy.Flags) {
-	cmd.source = args.New("trace", "trace file").(string)
+func (cmd *cmdMonkit) Setup(params clingy.Params) {
+	cmd.source = params.Arg("trace", "trace file").(string)
 }
 
-func (cmd *cmdJaeger) Setup(args clingy.Arguments, flags clingy.Flags) {
-	cmd.source = args.New("trace", "trace file").(string)
+func (cmd *cmdJaeger) Setup(params clingy.Params) {
+	cmd.source = params.Arg("trace", "trace file").(string)
 }
 
 func (cmd *cmdMonkit) Execute(ctx clingy.Context) error {
