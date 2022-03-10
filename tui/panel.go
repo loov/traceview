@@ -4,7 +4,6 @@ import (
 	"image/color"
 
 	"gioui.org/layout"
-	"gioui.org/op"
 	"gioui.org/widget/material"
 )
 
@@ -21,8 +20,6 @@ func Panel(th *material.Theme, caption string) PanelStyle {
 }
 
 func (p PanelStyle) Layout(gtx layout.Context, ws ...layout.Widget) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
-
 	bg := color.NRGBA{R: 0x30, G: 0x30, B: 0x38, A: 0xFF}
 	return Stack(Small).Layout(gtx,
 		layout.Spacer{Height: Small}.Layout,

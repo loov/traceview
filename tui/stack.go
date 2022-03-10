@@ -20,7 +20,7 @@ func Stack(gap Gap) StackStyle {
 }
 
 func (stack StackStyle) Layout(gtx layout.Context, ws ...layout.Widget) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
+	defer op.Offset(f32.Point{}).Push(gtx.Ops).Pop()
 
 	gap := gtx.Px(stack.Gap)
 	dims := layout.Dimensions{

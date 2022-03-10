@@ -296,8 +296,6 @@ type TimelineView struct {
 }
 
 func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
-
 	height := gtx.Px(unit.Dp(1)) * len(view.Visible.Rows)
 	if smallestSize := gtx.Px(view.Theme.FingerSize); height < smallestSize {
 		height = smallestSize
@@ -306,7 +304,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		X: gtx.Constraints.Max.X,
 		Y: height,
 	}
-	clip.Rect{Max: size}.Add(gtx.Ops)
+	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
 	rowHeight := int(float32(size.Y) / float32(len(view.Visible.Rows)))
 	if rowHeight < 1 {
@@ -335,9 +333,8 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 }
 
 func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
 	size := gtx.Constraints.Max
-	clip.Rect{Max: size}.Add(gtx.Ops)
+	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
 	rowHeight := gtx.Px(view.RowHeight)
 	rowAdvance := rowHeight
@@ -366,8 +363,6 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	}
 
 	func() {
-		defer op.Save(gtx.Ops).Load()
-
 		var links clip.Path
 		links.Begin(gtx.Ops)
 
@@ -394,12 +389,10 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 			}
 		}
 
-		clip.Stroke{
-			Path: links.End(),
-			Style: clip.StrokeStyle{
-				Width: 2,
-			},
-		}.Op().Add(gtx.Ops)
+		defer clip.Stroke{
+			Path:  links.End(),
+			Width: 2,
+		}.Op().Push(gtx.Ops).Pop()
 
 		paint.ColorOp{
 			Color: color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xAA},
@@ -414,26 +407,22 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 }
 
 func (view *TimelineView) drawSpan(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
-	defer op.Save(gtx.Ops).Load()
-
 	bg := view.SpanColor(span)
-	bounds.Op().Add(gtx.Ops)
+	defer bounds.Op().Push(gtx.Ops).Pop()
 	paint.ColorOp{Color: bg}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 }
 
 func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
-	defer op.Save(gtx.Ops).Load()
-
 	bg := view.SpanColor(span)
-	bounds.Op().Add(gtx.Ops)
+	defer bounds.Op().Push(gtx.Ops).Pop()
 	paint.ColorOp{Color: bg}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 
-	op.Offset(f32.Point{
+	defer op.Offset(f32.Point{
 		X: float32(bounds.Min.X) + 2,
 		Y: float32(bounds.Min.Y),
-	}).Add(gtx.Ops)
+	}).Push(gtx.Ops).Pop()
 	size := bounds.Max.Sub(bounds.Min)
 	gtx.Constraints.Min = size
 	gtx.Constraints.Max = size

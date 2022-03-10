@@ -1,13 +1,12 @@
 package tui
 
 import (
-	"image"
 	"image/color"
 
 	"gioui.org/gesture"
 	"gioui.org/io/pointer"
 	"gioui.org/layout"
-	"gioui.org/op"
+	"gioui.org/op/clip"
 	"gioui.org/unit"
 )
 
@@ -38,12 +37,8 @@ func (spin *Spin) Layout(gtx layout.Context) layout.Dimensions {
 		spin.last = de.Position.X
 	}
 
-	defer op.Save(gtx.Ops).Load()
-
-	pointer.Rect(image.Rectangle{Max: size}).Add(gtx.Ops)
-	pointer.CursorNameOp{
-		Name: pointer.CursorColResize,
-	}.Add(gtx.Ops)
+	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
+	pointer.CursorColResize.Add(gtx.Ops)
 
 	spin.drag.Add(gtx.Ops)
 
@@ -65,8 +60,6 @@ func Spinner(col, active color.NRGBA, spin *Spin) SpinnerStyle {
 }
 
 func (spin SpinnerStyle) Layout(gtx layout.Context) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
-
 	col := spin.Color
 	if spin.Spin.Dragging() {
 		col = spin.Active

@@ -58,8 +58,6 @@ func RoundBox(bg color.NRGBA) RoundBoxStyle {
 }
 
 func (b RoundBoxStyle) Layout(gtx layout.Context, w layout.Widget) layout.Dimensions {
-	defer op.Save(gtx.Ops).Load()
-
 	padding := gtx.Px(b.Padding)
 
 	gtx.Constraints.Min.X -= 2 * padding
