@@ -65,11 +65,11 @@ func main() {
 type cmdMonkit struct{ source string }
 type cmdJaeger struct{ source string }
 
-func (cmd *cmdMonkit) Setup(params clingy.Params) {
+func (cmd *cmdMonkit) Setup(params clingy.Parameters) {
 	cmd.source = params.Arg("trace", "trace file").(string)
 }
 
-func (cmd *cmdJaeger) Setup(params clingy.Params) {
+func (cmd *cmdJaeger) Setup(params clingy.Parameters) {
 	cmd.source = params.Arg("trace", "trace file").(string)
 }
 
