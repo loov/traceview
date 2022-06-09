@@ -15,9 +15,9 @@ type ButtonStyle struct {
 	Text         string
 	Color        color.NRGBA
 	Font         text.Font
-	TextSize     unit.Value
+	TextSize     unit.Sp
 	Background   color.NRGBA
-	CornerRadius unit.Value
+	CornerRadius unit.Dp
 	Inset        layout.Inset
 	Button       *widget.Clickable
 	shaper       text.Shaper
@@ -29,7 +29,7 @@ func Button(th *material.Theme, button *widget.Clickable, txt string) ButtonStyl
 		Color:        color.NRGBA{R: 0xF0, G: 0xF0, B: 0xF0, A: 0xFF},
 		CornerRadius: Small,
 		Background:   color.NRGBA{R: 0x60, G: 0x60, B: 0x60, A: 0xFF},
-		TextSize:     unit.Dp(12),
+		TextSize:     unit.Sp(12),
 		Inset: layout.Inset{
 			Top: Tiny, Bottom: Tiny,
 			Left: Small, Right: Small,

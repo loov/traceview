@@ -45,8 +45,8 @@ func PxEditor(theme *material.Theme, value *Px, caption string, min, max float32
 	editor.Color = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xFF}
 	editor.Font = cap.Font
 
-	editor.TextSize = cap.TextSize.Scale(0.8)
-	cap.TextSize = cap.TextSize.Scale(0.8)
+	editor.TextSize = cap.TextSize * 0.8
+	cap.TextSize = cap.TextSize * 0.8
 
 	return PxEditorStyle{
 		Caption: cap,

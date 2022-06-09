@@ -4,7 +4,6 @@ import (
 	"image"
 	"image/color"
 
-	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -45,7 +44,7 @@ func (box BoxStyle) Layout(gtx layout.Context, w layout.Widget) layout.Dimension
 
 type RoundBoxStyle struct {
 	Background   color.NRGBA
-	CornerRadius unit.Value
+	CornerRadius unit.Dp
 	Padding      Gap
 }
 
@@ -58,7 +57,7 @@ func RoundBox(bg color.NRGBA) RoundBoxStyle {
 }
 
 func (b RoundBoxStyle) Layout(gtx layout.Context, w layout.Widget) layout.Dimensions {
-	padding := gtx.Px(b.Padding)
+	padding := gtx.Dp(b.Padding)
 
 	gtx.Constraints.Min.X -= 2 * padding
 	gtx.Constraints.Min.Y -= 2 * padding
@@ -69,24 +68,20 @@ func (b RoundBoxStyle) Layout(gtx layout.Context, w layout.Widget) layout.Dimens
 	gtx.Constraints.Max = positive(gtx.Constraints.Max)
 
 	rec := op.Record(gtx.Ops)
-	op.Offset(f32.Point{
-		X: float32(padding),
-		Y: float32(padding),
-	}).Add(gtx.Ops)
+	stack := op.Offset(image.Point{X: padding, Y: padding}).Push(gtx.Ops)
 	dims := w(gtx)
+	stack.Pop()
 	wrec := rec.Stop()
 
-	sz := layout.FPt(dims.Size)
+	sz := dims.Size
 
-	rr := float32(gtx.Px(b.CornerRadius))
-	sz.X += float32(2 * padding)
-	sz.Y += float32(2 * padding)
-
-	r := f32.Rectangle{Max: sz}
+	rr := gtx.Dp(b.CornerRadius)
+	sz.X += 2 * padding
+	sz.Y += 2 * padding
 
 	paint.FillShape(gtx.Ops,
 		b.Background,
-		clip.UniformRRect(r, rr).Op(gtx.Ops),
+		clip.UniformRRect(image.Rectangle{Max: sz}, rr).Op(gtx.Ops),
 	)
 	wrec.Add(gtx.Ops)
 

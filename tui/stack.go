@@ -3,14 +3,12 @@ package tui
 import (
 	"image"
 
-	"gioui.org/f32"
 	"gioui.org/layout"
 	"gioui.org/op"
-	"gioui.org/unit"
 )
 
 type StackStyle struct {
-	Gap unit.Value
+	Gap Gap
 }
 
 func Stack(gap Gap) StackStyle {
@@ -20,9 +18,9 @@ func Stack(gap Gap) StackStyle {
 }
 
 func (stack StackStyle) Layout(gtx layout.Context, ws ...layout.Widget) layout.Dimensions {
-	defer op.Offset(f32.Point{}).Push(gtx.Ops).Pop()
+	defer op.Offset(image.Point{}).Push(gtx.Ops).Pop()
 
-	gap := gtx.Px(stack.Gap)
+	gap := gtx.Dp(stack.Gap)
 	dims := layout.Dimensions{
 		Size: image.Point{X: gtx.Constraints.Max.X},
 	}
@@ -33,8 +31,7 @@ func (stack StackStyle) Layout(gtx layout.Context, ws ...layout.Widget) layout.D
 
 		if i+1 < len(ws) {
 			dims.Size.Y += gap
-			op.Offset(f32.Point{Y: float32(wdims.Size.Y)}).Add(gtx.Ops)
-			op.Offset(f32.Point{Y: float32(gap)}).Add(gtx.Ops)
+			op.Offset(image.Point{Y: wdims.Size.Y + gap}).Add(gtx.Ops)
 		}
 	}
 

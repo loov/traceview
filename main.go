@@ -193,8 +193,8 @@ func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 		Timeline: ui.Timeline,
 
 		RowHeight:   unit.Dp(ui.RowHeight.Value),
-		RowGap:      unit.Px(1),
-		SpanCaption: unit.Dp(ui.RowHeight.Value - 2),
+		RowGap:      unit.Dp(1),
+		SpanCaption: unit.Sp(ui.RowHeight.Value - 2),
 
 		ZoomStart:  ui.Timeline.Start,
 		ZoomFinish: ui.Timeline.Start + trace.NewTime(ui.ZoomLevel.Value),
@@ -287,17 +287,17 @@ type TimelineView struct {
 	*trace.Timeline
 	Visible RenderOrder
 
-	RowHeight   unit.Value
-	RowGap      unit.Value
-	SpanCaption unit.Value
+	RowHeight   unit.Dp
+	RowGap      unit.Dp
+	SpanCaption unit.Sp
 
 	ZoomStart  trace.Time
 	ZoomFinish trace.Time
 }
 
 func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
-	height := gtx.Px(unit.Dp(1)) * len(view.Visible.Rows)
-	if smallestSize := gtx.Px(view.Theme.FingerSize); height < smallestSize {
+	height := gtx.Dp(1) * len(view.Visible.Rows)
+	if smallestSize := gtx.Dp(view.Theme.FingerSize); height < smallestSize {
 		height = smallestSize
 	}
 	size := image.Point{
@@ -336,7 +336,7 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	size := gtx.Constraints.Max
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
-	rowHeight := gtx.Px(view.RowHeight)
+	rowHeight := gtx.Dp(view.RowHeight)
 	rowAdvance := rowHeight
 
 	topY := 0
@@ -419,10 +419,7 @@ func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, 
 	paint.ColorOp{Color: bg}.Add(gtx.Ops)
 	paint.PaintOp{}.Add(gtx.Ops)
 
-	defer op.Offset(f32.Point{
-		X: float32(bounds.Min.X) + 2,
-		Y: float32(bounds.Min.Y),
-	}).Push(gtx.Ops).Pop()
+	defer op.Offset(image.Point{X: bounds.Min.X + 2, Y: bounds.Min.Y}).Push(gtx.Ops).Pop()
 	size := bounds.Max.Sub(bounds.Min)
 	gtx.Constraints.Min = size
 	gtx.Constraints.Max = size
