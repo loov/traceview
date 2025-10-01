@@ -23,14 +23,20 @@ func (spin *Spin) Layout(gtx layout.Context) layout.Dimensions {
 	size := gtx.Constraints.Max
 
 	var de *pointer.Event
-	for _, e := range spin.drag.Events(gtx.Metric, gtx, gesture.Axis(spin.Axis)) {
-		if e.Type == pointer.Press || e.Type == pointer.Drag {
-			de = &e
+
+	for {
+		ev, ok := spin.drag.Update(gtx.Metric, gtx.Source, gesture.Axis(spin.Axis))
+		if !ok {
+			break
+		}
+		// TODO: handle all events not just the last one
+		if ev.Kind == pointer.Press || ev.Kind == pointer.Drag {
+			de = &ev
 		}
 	}
 
 	if de != nil {
-		if de.Type == pointer.Press {
+		if de.Kind == pointer.Press {
 			spin.last = de.Position.X
 		}
 		spin.Delta = de.Position.X - spin.last

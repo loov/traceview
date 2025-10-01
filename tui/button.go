@@ -3,7 +3,9 @@ package tui
 import (
 	"image/color"
 
+	"gioui.org/font"
 	"gioui.org/layout"
+	"gioui.org/op"
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
@@ -14,13 +16,13 @@ import (
 type ButtonStyle struct {
 	Text         string
 	Color        color.NRGBA
-	Font         text.Font
+	Font         font.Font
 	TextSize     unit.Sp
 	Background   color.NRGBA
 	CornerRadius unit.Dp
 	Inset        layout.Inset
 	Button       *widget.Clickable
-	shaper       text.Shaper
+	shaper       *text.Shaper
 }
 
 func Button(th *material.Theme, button *widget.Clickable, txt string) ButtonStyle {
@@ -47,8 +49,9 @@ func (b ButtonStyle) Layout(gtx layout.Context) layout.Dimensions {
 		Button:       b.Button,
 	}.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
 		return b.Inset.Layout(gtx, func(gtx layout.Context) layout.Dimensions {
+			colMacro := op.Record(gtx.Ops)
 			paint.ColorOp{Color: b.Color}.Add(gtx.Ops)
-			return widget.Label{Alignment: text.Middle}.Layout(gtx, b.shaper, b.Font, b.TextSize, b.Text)
+			return widget.Label{Alignment: text.Middle}.Layout(gtx, b.shaper, b.Font, b.TextSize, b.Text, colMacro.Stop())
 		})
 	})
 }

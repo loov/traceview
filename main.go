@@ -18,11 +18,11 @@ import (
 	"gioui.org/f32"
 	"gioui.org/font/gofont"
 	"gioui.org/io/key"
-	"gioui.org/io/system"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
 	"gioui.org/op/paint"
+	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget"
 	"gioui.org/widget/material"
@@ -116,7 +116,8 @@ func (cmd *cmdJaeger) Execute(ctx clingy.Context) error {
 func run(ctx context.Context, timeline *trace.Timeline) error {
 	ui := NewUI(timeline)
 	go func() {
-		w := app.NewWindow(app.Title("traceview"))
+		w := new(app.Window)
+		w.Option(app.Title("traceview"))
 		if err := ui.Run(w); err != nil {
 			log.Println(err)
 			os.Exit(1)
@@ -144,7 +145,8 @@ type UI struct {
 
 func NewUI(timeline *trace.Timeline) *UI {
 	ui := &UI{}
-	ui.Theme = material.NewTheme(gofont.Collection())
+	ui.Theme = material.NewTheme()
+	ui.Theme.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
 	ui.Timeline = timeline
 
 	ui.SkipSpans.SetValue(100 * time.Millisecond)
@@ -156,11 +158,12 @@ func NewUI(timeline *trace.Timeline) *UI {
 func (ui *UI) Run(w *app.Window) error {
 	var ops op.Ops
 
-	for e := range w.Events() {
+	for {
+		e := w.Event()
 		switch e := e.(type) {
-		case system.FrameEvent:
+		case app.FrameEvent:
 
-			gtx := layout.NewContext(&ops, e)
+			gtx := app.NewContext(&ops, e)
 			ui.Layout(gtx)
 			e.Frame(gtx.Ops)
 
@@ -170,7 +173,7 @@ func (ui *UI) Run(w *app.Window) error {
 				return nil
 			}
 
-		case system.DestroyEvent:
+		case app.DestroyEvent:
 			return e.Err
 		}
 	}
