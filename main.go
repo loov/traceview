@@ -373,6 +373,37 @@ var tickIntervals = []time.Duration{
 	10 * time.Minute,
 }
 
+// tickLayout computes tick positions for the current zoom window.
+func (view *TimelineView) tickLayout(width int) (tickNs, firstTick trace.Time, pxPerNs float64) {
+	zoomDuration := view.ZoomFinish - view.ZoomStart
+	if zoomDuration <= 0 {
+		return 0, 0, 0
+	}
+
+	pxPerNs = float64(width) / float64(zoomDuration)
+	minTickNs := float64(80) / pxPerNs
+
+	interval := tickIntervals[len(tickIntervals)-1]
+	for _, ti := range tickIntervals {
+		if float64(ti.Nanoseconds()) >= minTickNs {
+			interval = ti
+			break
+		}
+	}
+
+	tickNs = trace.NewTime(interval)
+	firstTick = ((view.ZoomStart - view.Timeline.Start) / tickNs) * tickNs
+	if firstTick < view.ZoomStart-view.Timeline.Start {
+		firstTick += tickNs
+	}
+	return tickNs, firstTick, pxPerNs
+}
+
+func (view *TimelineView) tickPx(t trace.Time, pxPerNs float64) int {
+	absTime := view.Timeline.Start + t
+	return int(float64(absTime-view.ZoomStart) * pxPerNs)
+}
+
 func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 	rulerHeight := gtx.Dp(unit.Dp(24))
 	size := image.Point{X: gtx.Constraints.Max.X, Y: rulerHeight}
@@ -380,30 +411,9 @@ func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 	paint.FillShape(gtx.Ops, color.NRGBA{0x30, 0x30, 0x38, 0xFF}, clip.Rect{Max: size}.Op())
 
-	zoomDuration := view.ZoomFinish - view.ZoomStart
-	if zoomDuration <= 0 {
+	tickNs, firstTick, pxPerNs := view.tickLayout(size.X)
+	if tickNs <= 0 {
 		return layout.Dimensions{Size: size}
-	}
-
-	// Pick a tick interval that gives roughly 80-200px between ticks.
-	minTickPx := 80
-	pxPerNs := float64(size.X) / float64(zoomDuration)
-	minTickNs := float64(minTickPx) / pxPerNs
-
-	tickInterval := tickIntervals[len(tickIntervals)-1]
-	for _, ti := range tickIntervals {
-		if float64(ti.Nanoseconds()) >= minTickNs {
-			tickInterval = ti
-			break
-		}
-	}
-
-	tickNs := trace.NewTime(tickInterval)
-
-	// Find first tick at or after ZoomStart, aligned to the interval.
-	firstTick := ((view.ZoomStart - view.Timeline.Start) / tickNs) * tickNs
-	if firstTick < view.ZoomStart-view.Timeline.Start {
-		firstTick += tickNs
 	}
 
 	tickColor := color.NRGBA{R: 0x80, G: 0x80, B: 0x88, A: 0xFF}
@@ -420,17 +430,15 @@ func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 	}()
 
 	for t := firstTick; t <= view.ZoomFinish-view.Timeline.Start; t += tickNs {
-		absTime := view.Timeline.Start + t
-		px := int(float64(absTime-view.ZoomStart) * pxPerNs)
+		px := view.tickPx(t, pxPerNs)
 		if px < 0 || px >= size.X {
 			continue
 		}
 
 		// Draw tick mark.
-		tickH := 6
 		func() {
 			defer clip.Rect{
-				Min: image.Point{X: px, Y: rulerHeight - tickH},
+				Min: image.Point{X: px, Y: rulerHeight - 6},
 				Max: image.Point{X: px + 1, Y: rulerHeight},
 			}.Op().Push(gtx.Ops).Pop()
 			paint.ColorOp{Color: tickColor}.Add(gtx.Ops)
@@ -438,16 +446,39 @@ func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 		}()
 
 		// Draw label.
-		labelText := formatDuration(t.Std())
 		func() {
 			defer op.Offset(image.Point{X: px + 3, Y: 2}).Push(gtx.Ops).Pop()
-			lbl := material.Label(view.Theme, unit.Sp(10), labelText)
+			lbl := material.Label(view.Theme, unit.Sp(10), formatDuration(t.Std()))
 			lbl.Color = labelColor
 			lbl.Layout(gtx)
 		}()
 	}
 
 	return layout.Dimensions{Size: size}
+}
+
+func (view *TimelineView) drawGridLines(gtx layout.Context, size image.Point) {
+	tickNs, firstTick, pxPerNs := view.tickLayout(size.X)
+	if tickNs <= 0 {
+		return
+	}
+
+	gridColor := color.NRGBA{R: 0x50, G: 0x50, B: 0x58, A: 0xFF}
+
+	for t := firstTick; t <= view.ZoomFinish-view.Timeline.Start; t += tickNs {
+		px := view.tickPx(t, pxPerNs)
+		if px < 0 || px >= size.X {
+			continue
+		}
+		func() {
+			defer clip.Rect{
+				Min: image.Point{X: px, Y: 0},
+				Max: image.Point{X: px + 1, Y: size.Y},
+			}.Op().Push(gtx.Ops).Pop()
+			paint.ColorOp{Color: gridColor}.Add(gtx.Ops)
+			paint.PaintOp{}.Add(gtx.Ops)
+		}()
+	}
 }
 
 func formatDuration(d time.Duration) string {
@@ -481,6 +512,8 @@ func formatDuration(d time.Duration) string {
 func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	size := gtx.Constraints.Max
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
+
+	view.drawGridLines(gtx, size)
 
 	totalRows := len(view.Visible.Rows)
 	rowHeight := gtx.Dp(view.RowHeight)
