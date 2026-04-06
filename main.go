@@ -73,7 +73,7 @@ func (cmd *cmdJaeger) Setup(params clingy.Parameters) {
 	cmd.source = params.Arg("trace", "trace file").(string)
 }
 
-func (cmd *cmdMonkit) Execute(ctx clingy.Context) error {
+func (cmd *cmdMonkit) Execute(ctx context.Context) error {
 	data, err := os.ReadFile(cmd.source)
 	if err != nil {
 		return fmt.Errorf("failed to read trace: %w", err)
@@ -93,7 +93,7 @@ func (cmd *cmdMonkit) Execute(ctx clingy.Context) error {
 	return run(ctx, timeline)
 }
 
-func (cmd *cmdJaeger) Execute(ctx clingy.Context) error {
+func (cmd *cmdJaeger) Execute(ctx context.Context) error {
 	data, err := os.ReadFile(cmd.source)
 	if err != nil {
 		return fmt.Errorf("failed to read trace: %w", err)
