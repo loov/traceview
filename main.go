@@ -16,8 +16,9 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/f32"
-	tvfont "loov.dev/traceview/font"
+	"gioui.org/io/event"
 	"gioui.org/io/key"
+	"gioui.org/io/pointer"
 	"gioui.org/layout"
 	"gioui.org/op"
 	"gioui.org/op/clip"
@@ -25,6 +26,8 @@ import (
 	"gioui.org/text"
 	"gioui.org/unit"
 	"gioui.org/widget/material"
+
+	tvfont "loov.dev/traceview/font"
 
 	"loov.dev/traceview/import/jaeger"
 	"loov.dev/traceview/import/monkit"
@@ -136,6 +139,11 @@ type UI struct {
 	SkipSpans tui.Duration
 	ZoomLevel tui.Duration
 	RowHeight tui.Px
+
+	scrollY    int
+	scrollX    int
+	scrollTag  bool
+	ZoomOffset trace.Time
 }
 
 func NewUI(timeline *trace.Timeline) *UI {
@@ -188,6 +196,7 @@ func (ui *UI) Layout(gtx layout.Context) layout.Dimensions {
 
 func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 	view := &TimelineView{
+		UI:       ui,
 		Theme:    ui.Theme,
 		Timeline: ui.Timeline,
 
@@ -195,8 +204,8 @@ func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 		RowGap:      unit.Dp(1),
 		SpanCaption: unit.Sp(ui.RowHeight.Value - 2),
 
-		ZoomStart:  ui.Timeline.Start,
-		ZoomFinish: ui.Timeline.Start + trace.NewTime(ui.ZoomLevel.Value),
+		ZoomStart:  ui.Timeline.Start + ui.ZoomOffset,
+		ZoomFinish: ui.Timeline.Start + ui.ZoomOffset + trace.NewTime(ui.ZoomLevel.Value),
 	}
 
 	for _, tr := range ui.Timeline.Traces {
@@ -281,6 +290,7 @@ func (order *RenderOrder) Add(span *trace.Span) {
 }
 
 type TimelineView struct {
+	UI    *UI
 	Theme *material.Theme
 
 	*trace.Timeline
@@ -332,10 +342,57 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	size := gtx.Constraints.Max
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
+	totalRows := len(view.Visible.Rows)
 	rowHeight := gtx.Dp(view.RowHeight)
 	rowAdvance := rowHeight
+	totalHeight := totalRows * rowAdvance
 
-	topY := 0
+	// Handle scroll events for both axes.
+	event.Op(gtx.Ops, &view.UI.scrollTag)
+	for {
+		ev, ok := gtx.Source.Event(pointer.Filter{
+			Target:  &view.UI.scrollTag,
+			Kinds:   pointer.Scroll,
+			ScrollX: pointer.ScrollRange{Min: -size.X, Max: size.X},
+			ScrollY: pointer.ScrollRange{Min: -totalHeight, Max: totalHeight},
+		})
+		if !ok {
+			break
+		}
+		if e, ok := ev.(pointer.Event); ok && e.Kind == pointer.Scroll {
+			view.UI.scrollY += int(e.Scroll.Y)
+			view.UI.scrollX += int(e.Scroll.X)
+		}
+	}
+
+	// Clamp vertical scroll.
+	maxScrollY := totalHeight - size.Y
+	if maxScrollY < 0 {
+		maxScrollY = 0
+	}
+	view.UI.scrollY = max(0, min(view.UI.scrollY, maxScrollY))
+
+	// Apply horizontal scroll as zoom offset.
+	zoomDuration := view.ZoomFinish - view.ZoomStart
+	pxToDuration := float64(zoomDuration) / float64(size.X)
+	view.UI.ZoomOffset += trace.Time(float64(view.UI.scrollX) * pxToDuration)
+	view.UI.scrollX = 0
+
+	// Clamp zoom offset.
+	maxOffset := view.UI.Timeline.Finish - view.UI.Timeline.Start - trace.NewTime(view.UI.ZoomLevel.Value)
+	if maxOffset < 0 {
+		maxOffset = 0
+	}
+	if view.UI.ZoomOffset < 0 {
+		view.UI.ZoomOffset = 0
+	}
+	if view.UI.ZoomOffset > maxOffset {
+		view.UI.ZoomOffset = maxOffset
+	}
+	view.ZoomStart = view.UI.Timeline.Start + view.UI.ZoomOffset
+	view.ZoomFinish = view.ZoomStart + trace.NewTime(view.UI.ZoomLevel.Value)
+
+	topY := -view.UI.scrollY
 	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
 	for _, row := range view.Visible.Rows {
 		for _, span := range view.Visible.Spans[row.Low:row.High] {
