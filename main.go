@@ -401,10 +401,10 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 
 			span.Anchor = image.Point{X: x0, Y: topY + rowHeight/2}
 
-			if topY+rowHeight < 0 || gtx.Constraints.Max.Y < topY {
+			if topY+rowHeight < 0 || size.Y < topY {
 				continue
 			}
-			if span.Finish < view.Start || view.Finish < span.Start {
+			if span.Finish < view.ZoomStart || view.ZoomFinish < span.Start {
 				continue
 			}
 			view.drawSpanCaption(gtx, span, clip.Rect{
@@ -424,8 +424,22 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 				if !parent.Visible {
 					continue
 				}
+				// Skip parents entirely off-screen.
+				if parent.Anchor.Y+rowHeight < 0 || size.Y < parent.Anchor.Y-rowHeight {
+					continue
+				}
+				if parent.Finish < view.ZoomStart || view.ZoomFinish < parent.Start {
+					continue
+				}
 				for _, child := range parent.Children {
 					if !child.Visible || parent.Anchor.Y > child.Anchor.Y {
+						continue
+					}
+					// Skip links where both endpoints are off-screen in the same direction.
+					if child.Anchor.Y < 0 {
+						continue
+					}
+					if parent.Anchor.Y > size.Y {
 						continue
 					}
 
