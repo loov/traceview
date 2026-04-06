@@ -73,9 +73,9 @@ type Process struct {
 }
 
 type Tag struct {
-	Type  TagType     `json:"type"`
-	Key   string      `json:"key"`
-	Value interface{} `json:"value"`
+	Type  TagType `json:"type"`
+	Key   string  `json:"key"`
+	Value any     `json:"value"`
 }
 
 type TagType string

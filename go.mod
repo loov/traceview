@@ -1,6 +1,6 @@
 module loov.dev/traceview
 
-go 1.25.0
+go 1.26
 
 require (
 	gioui.org v0.9.1-0.20260317161059-dfe4ff020039

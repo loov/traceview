@@ -309,10 +309,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 	}
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
-	rowHeight := int(float32(size.Y) / float32(len(view.Visible.Rows)))
-	if rowHeight < 1 {
-		rowHeight = 1
-	}
+	rowHeight := max(int(float32(size.Y)/float32(len(view.Visible.Rows))), 1)
 
 	topY := 0
 
