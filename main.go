@@ -16,7 +16,7 @@ import (
 
 	"gioui.org/app"
 	"gioui.org/f32"
-	"gioui.org/font/gofont"
+	tvfont "loov.dev/traceview/font"
 	"gioui.org/io/key"
 	"gioui.org/layout"
 	"gioui.org/op"
@@ -24,7 +24,6 @@ import (
 	"gioui.org/op/paint"
 	"gioui.org/text"
 	"gioui.org/unit"
-	"gioui.org/widget"
 	"gioui.org/widget/material"
 
 	"loov.dev/traceview/import/jaeger"
@@ -137,21 +136,18 @@ type UI struct {
 	SkipSpans tui.Duration
 	ZoomLevel tui.Duration
 	RowHeight tui.Px
-
-	clickAlpha widget.Clickable
-	clickBeta  widget.Clickable
-	clickGamma widget.Clickable
 }
 
 func NewUI(timeline *trace.Timeline) *UI {
 	ui := &UI{}
 	ui.Theme = material.NewTheme()
-	ui.Theme.Shaper = text.NewShaper(text.WithCollection(gofont.Collection()))
+	ui.Theme.Shaper = text.NewShaper(text.WithCollection(tvfont.Collection()))
 	ui.Timeline = timeline
 
 	ui.SkipSpans.SetValue(100 * time.Millisecond)
 	ui.ZoomLevel.SetValue(time.Second)
 	ui.RowHeight.SetValue(12)
+
 	return ui
 }
 
