@@ -420,10 +420,41 @@ func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, 
 	gtx.Constraints.Min = size
 	gtx.Constraints.Max = size
 
-	material.Label(view.Theme, view.SpanCaption, span.Caption).Layout(gtx)
+	label := material.Label(view.Theme, view.SpanCaption, span.Caption)
+	label.Color = color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xDD}
+	label.Layout(gtx)
 }
 
 func (view *TimelineView) SpanColor(span *trace.Span) color.NRGBA {
 	p := int64(span.SpanID) ^ int64(span.TraceID)
-	return color.NRGBA{R: byte(p), G: byte(p >> 8), B: byte(p >> 16), A: 0xFF}
+	hue := float64(uint16(p)) / 0xFFFF * 360.0
+	return hslColor(hue, 0.4, 0.3)
+}
+
+func hslColor(h, s, l float64) color.NRGBA {
+	c := (1 - math.Abs(2*l-1)) * s
+	h2 := h / 60.0
+	x := c * (1 - math.Abs(math.Mod(h2, 2)-1))
+	var r, g, b float64
+	switch {
+	case h2 < 1:
+		r, g, b = c, x, 0
+	case h2 < 2:
+		r, g, b = x, c, 0
+	case h2 < 3:
+		r, g, b = 0, c, x
+	case h2 < 4:
+		r, g, b = 0, x, c
+	case h2 < 5:
+		r, g, b = x, 0, c
+	default:
+		r, g, b = c, 0, x
+	}
+	m := l - c/2
+	return color.NRGBA{
+		R: byte((r + m) * 255),
+		G: byte((g + m) * 255),
+		B: byte((b + m) * 255),
+		A: 0xFF,
+	}
 }
