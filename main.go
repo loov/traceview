@@ -222,7 +222,14 @@ func (ui *UI) LayoutTimeline(gtx layout.Context) layout.Dimensions {
 		Axis: layout.Horizontal,
 	}.Layout(gtx,
 		layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
-			return tui.Box(color.NRGBA{0x40, 0x40, 0x48, 0xFF}).Layout(gtx, view.Spans)
+			return layout.Flex{Axis: layout.Vertical}.Layout(gtx,
+				layout.Rigid(view.Ruler),
+				layout.Flexed(1, func(gtx layout.Context) layout.Dimensions {
+					size := gtx.Constraints.Max
+					paint.FillShape(gtx.Ops, color.NRGBA{0x40, 0x40, 0x48, 0xFF}, clip.Rect{Max: size}.Op())
+					return view.Spans(gtx)
+				}),
+			)
 		}),
 		layout.Rigid(func(gtx layout.Context) layout.Dimensions {
 			return tui.ContentWidthStyle{
@@ -336,6 +343,139 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 	return layout.Dimensions{
 		Size: size,
 	}
+}
+
+var tickIntervals = []time.Duration{
+	time.Nanosecond,
+	5 * time.Nanosecond,
+	10 * time.Nanosecond,
+	50 * time.Nanosecond,
+	100 * time.Nanosecond,
+	500 * time.Nanosecond,
+	time.Microsecond,
+	5 * time.Microsecond,
+	10 * time.Microsecond,
+	50 * time.Microsecond,
+	100 * time.Microsecond,
+	500 * time.Microsecond,
+	time.Millisecond,
+	5 * time.Millisecond,
+	10 * time.Millisecond,
+	50 * time.Millisecond,
+	100 * time.Millisecond,
+	500 * time.Millisecond,
+	time.Second,
+	5 * time.Second,
+	10 * time.Second,
+	30 * time.Second,
+	time.Minute,
+	5 * time.Minute,
+	10 * time.Minute,
+}
+
+func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
+	rulerHeight := gtx.Dp(unit.Dp(24))
+	size := image.Point{X: gtx.Constraints.Max.X, Y: rulerHeight}
+
+	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
+	paint.FillShape(gtx.Ops, color.NRGBA{0x30, 0x30, 0x38, 0xFF}, clip.Rect{Max: size}.Op())
+
+	zoomDuration := view.ZoomFinish - view.ZoomStart
+	if zoomDuration <= 0 {
+		return layout.Dimensions{Size: size}
+	}
+
+	// Pick a tick interval that gives roughly 80-200px between ticks.
+	minTickPx := 80
+	pxPerNs := float64(size.X) / float64(zoomDuration)
+	minTickNs := float64(minTickPx) / pxPerNs
+
+	tickInterval := tickIntervals[len(tickIntervals)-1]
+	for _, ti := range tickIntervals {
+		if float64(ti.Nanoseconds()) >= minTickNs {
+			tickInterval = ti
+			break
+		}
+	}
+
+	tickNs := trace.NewTime(tickInterval)
+
+	// Find first tick at or after ZoomStart, aligned to the interval.
+	firstTick := ((view.ZoomStart - view.Timeline.Start) / tickNs) * tickNs
+	if firstTick < view.ZoomStart-view.Timeline.Start {
+		firstTick += tickNs
+	}
+
+	tickColor := color.NRGBA{R: 0x80, G: 0x80, B: 0x88, A: 0xFF}
+	labelColor := color.NRGBA{R: 0xCC, G: 0xCC, B: 0xCC, A: 0xFF}
+
+	// Draw a baseline.
+	func() {
+		defer clip.Rect{
+			Min: image.Point{X: 0, Y: rulerHeight - 1},
+			Max: image.Point{X: size.X, Y: rulerHeight},
+		}.Op().Push(gtx.Ops).Pop()
+		paint.ColorOp{Color: tickColor}.Add(gtx.Ops)
+		paint.PaintOp{}.Add(gtx.Ops)
+	}()
+
+	for t := firstTick; t <= view.ZoomFinish-view.Timeline.Start; t += tickNs {
+		absTime := view.Timeline.Start + t
+		px := int(float64(absTime-view.ZoomStart) * pxPerNs)
+		if px < 0 || px >= size.X {
+			continue
+		}
+
+		// Draw tick mark.
+		tickH := 6
+		func() {
+			defer clip.Rect{
+				Min: image.Point{X: px, Y: rulerHeight - tickH},
+				Max: image.Point{X: px + 1, Y: rulerHeight},
+			}.Op().Push(gtx.Ops).Pop()
+			paint.ColorOp{Color: tickColor}.Add(gtx.Ops)
+			paint.PaintOp{}.Add(gtx.Ops)
+		}()
+
+		// Draw label.
+		labelText := formatDuration(t.Std())
+		func() {
+			defer op.Offset(image.Point{X: px + 3, Y: 2}).Push(gtx.Ops).Pop()
+			lbl := material.Label(view.Theme, unit.Sp(10), labelText)
+			lbl.Color = labelColor
+			lbl.Layout(gtx)
+		}()
+	}
+
+	return layout.Dimensions{Size: size}
+}
+
+func formatDuration(d time.Duration) string {
+	if d == 0 {
+		return "0"
+	}
+	if d < time.Microsecond {
+		return fmt.Sprintf("%dns", d.Nanoseconds())
+	}
+	if d < time.Millisecond {
+		us := float64(d.Nanoseconds()) / 1e3
+		if us == float64(int64(us)) {
+			return fmt.Sprintf("%d\u00B5s", int64(us))
+		}
+		return fmt.Sprintf("%.1f\u00B5s", us)
+	}
+	if d < time.Second {
+		ms := float64(d.Nanoseconds()) / 1e6
+		if ms == float64(int64(ms)) {
+			return fmt.Sprintf("%dms", int64(ms))
+		}
+		return fmt.Sprintf("%.1fms", ms)
+	}
+	s := d.Seconds()
+	if s == float64(int64(s)) {
+		return fmt.Sprintf("%ds", int64(s))
+	}
+	return fmt.Sprintf("%.1fs", s)
 }
 
 func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
