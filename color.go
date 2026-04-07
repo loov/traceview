@@ -35,6 +35,15 @@ var tickIntervals = []time.Duration{
 	10 * time.Minute,
 }
 
+func brighten(c color.NRGBA) color.NRGBA {
+	return color.NRGBA{
+		R: byte(min(int(c.R)+40, 255)),
+		G: byte(min(int(c.G)+40, 255)),
+		B: byte(min(int(c.B)+40, 255)),
+		A: c.A,
+	}
+}
+
 func spanColor(spanID, traceID int64) color.NRGBA {
 	p := spanID ^ traceID
 	hue := float64(uint16(p)) / 0xFFFF * 360.0

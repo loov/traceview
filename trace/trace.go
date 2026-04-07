@@ -32,6 +32,16 @@ type Trace struct {
 	Order []*Span
 }
 
+type Tag struct {
+	Key   string
+	Value string
+}
+
+type Log struct {
+	Timestamp Time
+	Fields    []Tag
+}
+
 type Span struct {
 	TraceSpanID
 
@@ -43,6 +53,9 @@ type Span struct {
 
 	FollowsFrom []*Span
 	FollowedBy  []*Span
+
+	Tags []Tag
+	Logs []Log
 
 	Visible bool
 	Anchor  image.Point

@@ -23,8 +23,12 @@ type Viewport struct {
 	ScrollY        int
 	ScrollX        int
 	scrollTag      bool
+	clickTag       bool
 	ZoomOffset     trace.Time
 	SpansViewportH int
+
+	Clicked  bool
+	ClickPos f32.Point
 }
 
 // RenderOrder groups visible spans into non-overlapping rows for rendering.
@@ -284,6 +288,9 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 		}
 	}
 
+	// Register for click events (processed in UI.Layout).
+	event.Op(gtx.Ops, &view.UI.Viewport.clickTag)
+
 	// Clamp vertical scroll.
 	maxScrollY := totalHeight - size.Y
 	if maxScrollY < 0 {
@@ -313,6 +320,28 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 
 	topY := -view.UI.Viewport.ScrollY
 	durationToPx := float64(size.X) / float64(view.ZoomFinish-view.ZoomStart)
+
+	// Hit-test click against spans.
+	if view.UI.Viewport.Clicked {
+		prev := view.UI.Selected
+		view.UI.Selected = nil
+		cx, cy := int(view.UI.Viewport.ClickPos.X), int(view.UI.Viewport.ClickPos.Y)
+		hitY := topY
+		for _, row := range view.Visible.Rows {
+			for _, span := range view.Visible.Spans[row.Low:row.High] {
+				x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
+				x1 := int(math.Ceil(float64(durationToPx * float64(span.Finish-view.ZoomStart))))
+				if cx >= x0 && cx < x1 && cy >= hitY && cy < hitY+rowHeight {
+					view.UI.Selected = span
+				}
+			}
+			hitY += rowAdvance
+		}
+		if view.UI.Selected != prev {
+			gtx.Execute(op.InvalidateCmd{})
+		}
+	}
+
 	for _, row := range view.Visible.Rows {
 		for _, span := range view.Visible.Spans[row.Low:row.High] {
 			x0 := int(durationToPx * float64(span.Start-view.ZoomStart))
@@ -392,7 +421,21 @@ func (view *TimelineView) drawSpan(gtx layout.Context, span *trace.Span, bounds 
 
 func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
 	bg := spanColor(int64(span.SpanID), int64(span.TraceID))
+	if view.UI.Selected == span {
+		bg = brighten(bg)
+	}
 	paint.FillShape(gtx.Ops, bg, bounds.Op())
+
+	// Draw selection border.
+	if view.UI.Selected == span {
+		border := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xCC}
+		b := bounds
+		paint.FillShape(gtx.Ops, border, clip.Rect{Min: b.Min, Max: image.Point{X: b.Max.X, Y: b.Min.Y + 1}}.Op())
+		paint.FillShape(gtx.Ops, border, clip.Rect{Min: image.Point{X: b.Min.X, Y: b.Max.Y - 1}, Max: b.Max}.Op())
+		paint.FillShape(gtx.Ops, border, clip.Rect{Min: b.Min, Max: image.Point{X: b.Min.X + 1, Y: b.Max.Y}}.Op())
+		paint.FillShape(gtx.Ops, border, clip.Rect{Min: image.Point{X: b.Max.X - 1, Y: b.Min.Y}, Max: b.Max}.Op())
+	}
+
 	defer bounds.Op().Push(gtx.Ops).Pop()
 
 	defer op.Offset(image.Point{X: bounds.Min.X + 2, Y: bounds.Min.Y}).Push(gtx.Ops).Pop()

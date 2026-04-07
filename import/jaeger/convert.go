@@ -7,6 +7,34 @@ import (
 	"loov.dev/traceview/trace"
 )
 
+func convertTags(tags []Tag) []trace.Tag {
+	if len(tags) == 0 {
+		return nil
+	}
+	out := make([]trace.Tag, len(tags))
+	for i, t := range tags {
+		out[i] = trace.Tag{
+			Key:   t.Key,
+			Value: fmt.Sprint(t.Value),
+		}
+	}
+	return out
+}
+
+func convertLogs(logs []Log) []trace.Log {
+	if len(logs) == 0 {
+		return nil
+	}
+	out := make([]trace.Log, len(logs))
+	for i, l := range logs {
+		out[i] = trace.Log{
+			Timestamp: l.Timestamp.Time(),
+			Fields:    convertTags(l.Fields),
+		}
+	}
+	return out
+}
+
 func Convert(traces ...Trace) (*trace.Timeline, error) {
 	var timeline trace.Timeline
 
@@ -16,7 +44,7 @@ func Convert(traces ...Trace) (*trace.Timeline, error) {
 	timeline.TimeRange = trace.InvalidRange
 
 	// span may be nil
-	ensure := func(refid TraceSpanID, span *Span) (*trace.Span, error) {
+	ensure := func(refid TraceSpanID, span *Span, processes map[ProcessID]Process) (*trace.Span, error) {
 		id, err := convertTraceSpanID(refid)
 		if err != nil {
 			return nil, err
@@ -27,7 +55,7 @@ func Convert(traces ...Trace) (*trace.Timeline, error) {
 			node = &trace.Span{}
 			timeline.SpanByID[id] = node
 		}
-		updateSpanContent(node, id, span)
+		updateSpanContent(node, id, span, processes)
 
 		if span != nil {
 			tr, ok := traceByID[id.TraceID]
@@ -51,7 +79,7 @@ func Convert(traces ...Trace) (*trace.Timeline, error) {
 		for k := range trace.Spans {
 			span := &trace.Spans[k]
 
-			node, err := ensure(span.TraceSpanID, span)
+			node, err := ensure(span.TraceSpanID, span, trace.Processes)
 			if err != nil {
 				return nil, err
 			}
@@ -61,14 +89,14 @@ func Convert(traces ...Trace) (*trace.Timeline, error) {
 			for _, ref := range span.References {
 				switch ref.RefType {
 				case ChildOf:
-					parent, err := ensure(ref.TraceSpanID, nil)
+					parent, err := ensure(ref.TraceSpanID, nil, nil)
 					if err != nil {
 						return nil, err
 					}
 					parent.Children = append(parent.Children, node)
 					node.Parents = append(node.Parents, parent)
 				case FollowsFrom:
-					parent, err := ensure(ref.TraceSpanID, nil)
+					parent, err := ensure(ref.TraceSpanID, nil, nil)
 					if err != nil {
 						return nil, err
 					}
@@ -83,7 +111,7 @@ func Convert(traces ...Trace) (*trace.Timeline, error) {
 	return &timeline, nil
 }
 
-func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span) {
+func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span, processes map[ProcessID]Process) {
 	if node.TraceSpanID.IsZero() {
 		node.TraceSpanID = id
 	}
@@ -95,7 +123,16 @@ func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span) {
 	node.Start = span.StartTime.Time()
 	node.Finish = node.Start + span.Duration.Time()
 
-	return
+	node.Tags = convertTags(span.Tags)
+	node.Logs = convertLogs(span.Logs)
+
+	if proc, ok := processes[span.ProcessID]; ok {
+		node.Tags = append([]trace.Tag{{Key: "service", Value: proc.ServiceName}}, node.Tags...)
+		node.Tags = append(node.Tags, convertTags(proc.Tags)...)
+	}
+	for _, w := range span.Warnings {
+		node.Tags = append(node.Tags, trace.Tag{Key: "warning", Value: w})
+	}
 }
 
 func convertTraceSpanID(id TraceSpanID) (trace.TraceSpanID, error) {

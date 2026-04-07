@@ -81,4 +81,23 @@ func updateSpanContent(node *trace.Span, id trace.TraceSpanID, span *Span) {
 	node.Caption = span.Func.Name
 	node.Start = span.Start.Time()
 	node.Finish = span.Finish.Time()
+
+	if span.Func.Package != "" {
+		node.Tags = append(node.Tags, trace.Tag{Key: "package", Value: span.Func.Package})
+	}
+	if span.Err != "" {
+		node.Tags = append(node.Tags, trace.Tag{Key: "error", Value: span.Err})
+	}
+	if span.Panicked {
+		node.Tags = append(node.Tags, trace.Tag{Key: "panicked", Value: "true"})
+	}
+	if span.Orphaned {
+		node.Tags = append(node.Tags, trace.Tag{Key: "orphaned", Value: "true"})
+	}
+	for _, arg := range span.Args {
+		node.Tags = append(node.Tags, trace.Tag{Key: "arg", Value: arg})
+	}
+	for _, ann := range span.Annotations {
+		node.Tags = append(node.Tags, trace.Tag{Key: ann[0], Value: ann[1]})
+	}
 }
