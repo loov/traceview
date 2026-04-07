@@ -140,10 +140,11 @@ type UI struct {
 	ZoomLevel tui.Duration
 	RowHeight tui.Px
 
-	scrollY    int
-	scrollX    int
-	scrollTag  bool
-	ZoomOffset trace.Time
+	scrollY        int
+	scrollX        int
+	scrollTag      bool
+	ZoomOffset     trace.Time
+	spansViewportH int
 }
 
 func NewUI(timeline *trace.Timeline) *UI {
@@ -340,6 +341,59 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		topY += rowHeight
 	}
 
+	// Draw visible region overlay.
+	{
+		x0 := int(durationToPx * float64(view.ZoomStart-view.Start))
+		x1 := int(math.Ceil(durationToPx * float64(view.ZoomFinish-view.Start)))
+		if x0 < 0 {
+			x0 = 0
+		}
+		if x1 > size.X {
+			x1 = size.X
+		}
+
+		// Compute vertical visible region.
+		totalRows := len(view.Visible.Rows)
+		spansRowHeight := gtx.Dp(view.RowHeight)
+		totalContentH := totalRows * spansRowHeight
+		y0, y1 := 0, size.Y
+		if totalContentH > 0 {
+			scale := float64(size.Y) / float64(totalContentH)
+			y0 = int(float64(view.UI.scrollY) * scale)
+			y1 = int(float64(view.UI.scrollY+view.UI.spansViewportH) * scale)
+			if y0 < 0 {
+				y0 = 0
+			}
+			if y1 > size.Y {
+				y1 = size.Y
+			}
+		}
+
+		overlay := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x20}
+		func() {
+			defer clip.Rect{
+				Min: image.Point{X: x0, Y: y0},
+				Max: image.Point{X: x1, Y: y1},
+			}.Op().Push(gtx.Ops).Pop()
+			paint.ColorOp{Color: overlay}.Add(gtx.Ops)
+			paint.PaintOp{}.Add(gtx.Ops)
+		}()
+		// Draw edges.
+		border := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x60}
+		for _, r := range []clip.Rect{
+			{Min: image.Point{X: x0, Y: y0}, Max: image.Point{X: x0 + 1, Y: y1}},
+			{Min: image.Point{X: x1 - 1, Y: y0}, Max: image.Point{X: x1, Y: y1}},
+			{Min: image.Point{X: x0, Y: y0}, Max: image.Point{X: x1, Y: y0 + 1}},
+			{Min: image.Point{X: x0, Y: y1 - 1}, Max: image.Point{X: x1, Y: y1}},
+		} {
+			func() {
+				defer r.Op().Push(gtx.Ops).Pop()
+				paint.ColorOp{Color: border}.Add(gtx.Ops)
+				paint.PaintOp{}.Add(gtx.Ops)
+			}()
+		}
+	}
+
 	return layout.Dimensions{
 		Size: size,
 	}
@@ -514,6 +568,7 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 	defer clip.Rect{Max: size}.Push(gtx.Ops).Pop()
 
 	view.drawGridLines(gtx, size)
+	view.UI.spansViewportH = size.Y
 
 	totalRows := len(view.Visible.Rows)
 	rowHeight := gtx.Dp(view.RowHeight)
