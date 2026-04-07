@@ -137,14 +137,10 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 		}
 
 		overlay := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x20}
-		func() {
-			defer clip.Rect{
-				Min: image.Point{X: x0, Y: y0},
-				Max: image.Point{X: x1, Y: y1},
-			}.Op().Push(gtx.Ops).Pop()
-			paint.ColorOp{Color: overlay}.Add(gtx.Ops)
-			paint.PaintOp{}.Add(gtx.Ops)
-		}()
+		paint.FillShape(gtx.Ops, overlay, clip.Rect{
+			Min: image.Point{X: x0, Y: y0},
+			Max: image.Point{X: x1, Y: y1},
+		}.Op())
 		// Draw edges.
 		border := color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0x60}
 		for _, r := range []clip.Rect{
@@ -153,11 +149,7 @@ func (view *TimelineView) Minimap(gtx layout.Context) layout.Dimensions {
 			{Min: image.Point{X: x0, Y: y0}, Max: image.Point{X: x1, Y: y0 + 1}},
 			{Min: image.Point{X: x0, Y: y1 - 1}, Max: image.Point{X: x1, Y: y1}},
 		} {
-			func() {
-				defer r.Op().Push(gtx.Ops).Pop()
-				paint.ColorOp{Color: border}.Add(gtx.Ops)
-				paint.PaintOp{}.Add(gtx.Ops)
-			}()
+			paint.FillShape(gtx.Ops, border, r.Op())
 		}
 	}
 
@@ -213,14 +205,10 @@ func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 	labelColor := color.NRGBA{R: 0xCC, G: 0xCC, B: 0xCC, A: 0xFF}
 
 	// Draw a baseline.
-	func() {
-		defer clip.Rect{
-			Min: image.Point{X: 0, Y: rulerHeight - 1},
-			Max: image.Point{X: size.X, Y: rulerHeight},
-		}.Op().Push(gtx.Ops).Pop()
-		paint.ColorOp{Color: tickColor}.Add(gtx.Ops)
-		paint.PaintOp{}.Add(gtx.Ops)
-	}()
+	paint.FillShape(gtx.Ops, tickColor, clip.Rect{
+		Min: image.Point{X: 0, Y: rulerHeight - 1},
+		Max: image.Point{X: size.X, Y: rulerHeight},
+	}.Op())
 
 	for t := firstTick; t <= view.ZoomFinish-view.Timeline.Start; t += tickNs {
 		px := view.tickPx(t, pxPerNs)
@@ -229,14 +217,10 @@ func (view *TimelineView) Ruler(gtx layout.Context) layout.Dimensions {
 		}
 
 		// Draw tick mark.
-		func() {
-			defer clip.Rect{
-				Min: image.Point{X: px, Y: rulerHeight - 6},
-				Max: image.Point{X: px + 1, Y: rulerHeight},
-			}.Op().Push(gtx.Ops).Pop()
-			paint.ColorOp{Color: tickColor}.Add(gtx.Ops)
-			paint.PaintOp{}.Add(gtx.Ops)
-		}()
+		paint.FillShape(gtx.Ops, tickColor, clip.Rect{
+			Min: image.Point{X: px, Y: rulerHeight - 6},
+			Max: image.Point{X: px + 1, Y: rulerHeight},
+		}.Op())
 
 		// Draw label.
 		func() {
@@ -263,14 +247,10 @@ func (view *TimelineView) drawGridLines(gtx layout.Context, size image.Point) {
 		if px < 0 || px >= size.X {
 			continue
 		}
-		func() {
-			defer clip.Rect{
-				Min: image.Point{X: px, Y: 0},
-				Max: image.Point{X: px + 1, Y: size.Y},
-			}.Op().Push(gtx.Ops).Pop()
-			paint.ColorOp{Color: gridColor}.Add(gtx.Ops)
-			paint.PaintOp{}.Add(gtx.Ops)
-		}()
+		paint.FillShape(gtx.Ops, gridColor, clip.Rect{
+			Min: image.Point{X: px, Y: 0},
+			Max: image.Point{X: px + 1, Y: size.Y},
+		}.Op())
 	}
 }
 
@@ -395,16 +375,10 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 			}
 		}
 
-		defer clip.Stroke{
-			Path:  links.End(),
-			Width: 2,
-		}.Op().Push(gtx.Ops).Pop()
-
-		paint.ColorOp{
-			Color: color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xAA},
-		}.Add(gtx.Ops)
-
-		paint.PaintOp{}.Add(gtx.Ops)
+		paint.FillShape(gtx.Ops,
+			color.NRGBA{R: 0xFF, G: 0xFF, B: 0xFF, A: 0xAA},
+			clip.Stroke{Path: links.End(), Width: 2}.Op(),
+		)
 	}()
 
 	return layout.Dimensions{
@@ -413,17 +387,13 @@ func (view *TimelineView) Spans(gtx layout.Context) layout.Dimensions {
 }
 
 func (view *TimelineView) drawSpan(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
-	bg := spanColor(int64(span.SpanID), int64(span.TraceID))
-	defer bounds.Op().Push(gtx.Ops).Pop()
-	paint.ColorOp{Color: bg}.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
+	paint.FillShape(gtx.Ops, spanColor(int64(span.SpanID), int64(span.TraceID)), bounds.Op())
 }
 
 func (view *TimelineView) drawSpanCaption(gtx layout.Context, span *trace.Span, bounds clip.Rect) {
 	bg := spanColor(int64(span.SpanID), int64(span.TraceID))
+	paint.FillShape(gtx.Ops, bg, bounds.Op())
 	defer bounds.Op().Push(gtx.Ops).Pop()
-	paint.ColorOp{Color: bg}.Add(gtx.Ops)
-	paint.PaintOp{}.Add(gtx.Ops)
 
 	defer op.Offset(image.Point{X: bounds.Min.X + 2, Y: bounds.Min.Y}).Push(gtx.Ops).Pop()
 	size := bounds.Max.Sub(bounds.Min)
